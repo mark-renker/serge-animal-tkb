@@ -1,0 +1,254 @@
+# SergeAnimalTKB — a self-contained Serge-style modular voice in Faust
+
+A V1 software instrument modeled on the Random\*Source **"Animal" (La Bestia)** voice/timbre
+panel concept, plus a 16-step **TKB**-style sequencer and MIDI as the default key source.
+Every module output is a patch **source**; every module input is a patch **destination**
+with two assignable slots (source menu + bipolar attenuverter). Feedback patching is legal
+everywhere (one-sample loop delay), which is essential to the Serge idiom.
+
+Files:
+- `SergeAnimalTKB.dsp` — the complete Faust source (single file, stdfaust only)
+- `render.cpp` — offline renderer used to produce the demo WAVs (also documents six
+  complete patches programmatically — read it as a patch book)
+- `demo1..demo6 .wav` — rendered audio demos (48 kHz stereo)
+
+---
+
+## 1. Quick start
+
+**Instant audition (no build):** open https://faustide.grame.fr, drag `SergeAnimalTKB.dsp`
+in, press Run. Check `TKB mode` in the KEY group and `run` in TKB/clock and it plays itself.
+
+**AU/VST3 on macOS:**
+```
+faust2juce -midi -nvoices 1 SergeAnimalTKB.dsp
+```
+then open the generated JUCE project in Projucer/Xcode and build the AU/VST3 targets.
+With `-nvoices 1` the standard `freq`/`gate`/`gain` controls are driven by MIDI notes
+(monophonic, last-note priority).
+
+**Caveat (JUCE polyphonic voice management):** in `-nvoices` builds the DSP only runs
+while a voice is alive; after note-off, the voice is reclaimed once output falls below
+the stop threshold. For played material this is exactly right. For fully generative,
+keyboard-less patches (TKB mode, cycling DUSGs), either (a) hold/latch one MIDI note,
+or (b) build **without** `-nvoices`/`-midi` (`faust2juce SergeAnimalTKB.dsp`) and use
+TKB mode — the engine then runs unconditionally and `freq`/`gate` remain host-automatable
+sliders. Both builds come from the same .dsp.
+
+**Other targets:** `faust2caqt -midi -nvoices 1` (standalone CoreAudio app),
+`faust2max6` / RNBO via C++ export, or drop the file into faustgen~ in Max.
+
+Signal conventions: audio and CV are nominal ±1.0 (≈ ±5 V), gates/triggers 0/1 with a
+0.25 rising-edge threshold. Slope/SSG outputs are unipolar 0..1 like the hardware.
+
+---
+
+## 2. Why these modules (system design rationale)
+
+The Random\*Source **La Bestia / Animal** is the archetypal "complete Serge in one panel":
+oscillator (NTO), timbre processors (Wave Multipliers), slopes (DSG mk2), SSG + noise,
+the two classic filters, and mixing. What it deliberately lacks is a note source — in
+hardware you add the TKB. This plugin is that pairing, minus the second filter (VCFS)
+and plus a ring modulator (borrowed from the Inori panel's recipe) because in software
+a DC-coupled four-quadrant multiplier doubles as a second VCA and is the single highest
+patch-value-per-line-of-code module in the Serge world.
+
+Roles in the whole:
+
+- **NTO** — the pitched voice. Its VC waveshape output is the canonical partner for the
+  Wave Multipliers: you set a base timbre, then animate it downstream.
+- **DUSG ×2** — the heart of any Serge. Envelope, LFO, slew, audio oscillator,
+  subharmonic divider, envelope follower — the same circuit, role decided by patching.
+  Two of them so one can be "time" (envelope/clock) while the other is "tone"
+  (audio-rate slope oscillator), the classic Animal split.
+- **SSG** — Serge's random/S&H/glide engine. Stepped section = sample-and-hold with a
+  slew-limited output (staircases, random voltages); smooth section = VC glide with a
+  hold input (track-and-hold); coupler = comparator square between the two. With the
+  noise source this is the entire "West Coast generative" toolkit.
+- **VCFQ** — the classic Serge filter, including its signature **trigger input**: a
+  strike that rings the filter at its resonant frequency. That one feature makes the
+  filter a percussion voice with no oscillator patched at all (demo 2).
+- **VCM (Wave Multipliers)** — the iconic Serge timbre module, three sections: a soft
+  saturating "top", the sweet sinusoidal middle folder (VC), and a harsher high-order
+  bottom folder. This is where static waveforms become playable timbre.
+- **RING** — DC-coupled multiplier: ring mod, AM, bonus VCA, chaos glue in feedback.
+- **NOISE + RVG** — white/pink plus a self-clocked random voltage generator (stepped +
+  smoothed outputs), so generative patches don't consume the SSG.
+- **TKB-16** — 4 rows × 16 stages, internal or external clock, length, reset, random
+  stage mode, gate output with width. Row A is normalled to pitch in TKB mode; rows
+  B–D are free CV lanes (per-step filter tuning, fold amounts, anything).
+- **Dual VCA + stereo mixer** — Serge-style lin/exp VCAs, per-channel pan, a master,
+  and a **monitor channel** that can audition any matrix source directly (invaluable
+  for debugging patches).
+
+---
+
+## 3. Module reference (every parameter and patch point)
+
+### KEY
+| Control | Function |
+|---|---|
+| freq / gate / gain | Standard Faust MIDI controls. In `-nvoices 1` builds these are driven by MIDI notes/velocity. |
+| TKB mode | Off (default): MIDI is the key source. On: TKB row A → pitch, TKB gate → key gate. |
+| glide | Portamento (s) on the key pitch. |
+
+Matrix sources: **KEY pitch** (±1 ≈ ±5 octaves around C4, log scale), **KEY gate**.
+
+### NTO — New Timbral Oscillator
+Triangle-core VCO, through-zero linear FM, hard sync, VC waveshape.
+| Control | Function |
+|---|---|
+| coarse / fine | ±24 semitones / ±100 cents around the key pitch. |
+| shape | VAR output morph: 0 = sine → 0.5 = triangle → 1 = soft square. |
+| keytrack | Off pins the oscillator at C4 + coarse/fine (drone/FM-operator use). |
+
+Destinations: **pitch FM** (exponential, ±1 slot value = ±2 octaves per slot),
+**lin FM** (through-zero, ±1 = ±3× the base frequency — the oscillator genuinely
+reverses phase direction through zero), **shape** (adds to the knob), **sync**
+(rising edge resets phase). Sources: **sin**, **saw**, **var**.
+
+### DUSG1 / DUSG2 — Dual Universal Slope Generator (DSG mk2)
+| Control | Function |
+|---|---|
+| rise / fall | 50 µs – 10 s (log). At sub-ms settings with cycle on, it's an audio oscillator (variable-symmetry triangle/saw). |
+| cycle | Self-retrigger at the end of fall (LFO / oscillator mode). |
+
+Destinations: **trig** (fires a full rise→fall transient; ignored mid-cycle, which is
+what makes a DUSG a clock divider / subharmonic generator when triggered faster than
+it can complete), **signal in** (the output slews toward this input — slew limiter /
+envelope follower / portamento), **rise CV / fall CV** (exponential, ±1 = ±5 octaves
+of rate; this is the pitch input in oscillator mode). Sources: **out** (unipolar 0–1),
+**end** (4 ms pulse when the fall completes — chain it to another trig for bursts,
+bounce patches, or use it as a clock).
+
+### SSG — Smooth & Stepped Generator
+| Control | Function |
+|---|---|
+| smooth rate | Slew time of the smooth section (log). |
+| stepped rate | Slew time applied to each new sampled value (fast = hard steps, slow = glissando staircases). |
+
+Destinations: **smooth in** (signal to be slewed), **smooth rate CV** (±5 oct),
+**hold** (gate high freezes the smooth output → track-and-hold), **stepped in**
+(signal to sample), **stepped clk** (rising edge samples). Sources: **smooth**,
+**stepped**, **coupler** (±1 square: smooth > stepped — patch coupler → smooth in
+and it oscillates, the classic SSG trick).
+
+### VCFQ — Variable-Q filter (TPT SVF core)
+| Control | Function |
+|---|---|
+| freq | 20 Hz – 12 kHz (log). |
+| Q | 0.5 – 40 (log); stable up to 60 with CV. |
+| input gain | Drive into the input soft-clip (compensate high-Q gain, or push it). |
+| ping level | Strike energy for the trigger input. |
+
+Destinations: **audio in**, **freq CV** (±5 oct), **Q CV** (±3 oct), **ping trig**
+(rising edge injects an impulse — the filter rings at its tuned frequency and Q, the
+signature Serge percussion voice). Sources: **LP**, **BP**, **HP** simultaneously.
+
+### VCM — Wave Multipliers
+| Control | Function |
+|---|---|
+| top drive | Gain into the soft-saturating top section (1–10). |
+| fold | Middle/bottom folder gain, 0–1 mapped exponentially (0.5×–8×). |
+| bias | DC offset into the middle folder — introduces even harmonics, breaks symmetry. |
+
+Destinations: **audio in** (shared by all three sections, as in hardware), **fold CV**
+(±2 octaves of folder gain). Sources: **top** (tanh-style saturation), **mid**
+(smooth sinusoidal folder — the famous sweet one), **bot** (high-order triangle
+wrap — the aggressive one).
+
+### RING / NOISE / RVG
+| Control | Function |
+|---|---|
+| ring gain | Multiplier drive into a soft clip (0.5–4). |
+| RVG rate | Internal random clock, 0.05–50 Hz. |
+
+Destinations: **X in**, **Y in** (DC-coupled: patch a CV into one side and it's a VCA).
+Sources: **RING**, **Noise wht**, **Noise pnk**, **RVG stepped**, **RVG smooth**.
+
+### TKB — 16×4 sequencer (Touch-Activated Keyboard stand-in)
+| Control | Function |
+|---|---|
+| run / rate | Internal clock on/off, 0.1–30 Hz. |
+| length | Active stages 1–16. |
+| random | Random stage selection instead of sequential (Serge "random access"). |
+| gate len | Gate output width in seconds. |
+| range | Octave span of row A when it drives pitch (0.5–5 oct above C3). |
+| Row A–D, 16 sliders each | Per-stage voltages, 0–1. |
+
+Destinations: **ext clock** (rising edges advance; combine with internal clock freely),
+**reset** (back to stage 0). Sources: **TKB A/B/C/D**, **TKB gate**.
+What's deliberately not in V1 vs. the real TKB: touch pads/pressure output, vertical
+stage selection (playing the 4×16 grid two-dimensionally), and per-stage skip. The
+sequencing/CV-programming role is fully covered; the performance-surface role is not.
+
+### OUT — VCAs and stereo mixer
+| Control | Function |
+|---|---|
+| vca1/2 level | Static open amount, summed with the CV before clamping to 0–1. |
+| vca1/2 exp | Cubic ("exponential") response instead of linear. |
+| pan1/2 | Equal-power placement of each VCA in the stereo field. |
+| monitor src / level | Audition ANY matrix source directly at the output. |
+| master | Final level into per-channel DC-blocker + soft limiter. |
+
+Destinations: **VCA1/2 audio in**, **VCA1/2 CV**. Sources: **VCA1**, **VCA2**
+(yes, the VCA outputs are matrix sources — sidechain them anywhere).
+
+---
+
+## 4. The patch matrix (banana cables by other means)
+
+31 destinations × 2 slots each; every slot = a source selector (31-entry menu,
+0 = OFF) + a ±1 attenuverter. Two slots per input mirrors banana-jack stacking well
+enough for V1; the VCAs, ring mod, and mixer give you unlimited further mixing.
+The **default slot values are the default patch** (Serge "normalization"):
+
+```
+KEY gate ──► DUSG1 trig          NTO var ──► VCM in
+DUSG1 out ─► VCA1 CV             VCM mid ──► VCFQ in
+                                 VCFQ LP ──► VCA1 in ──► output
+```
+Play a MIDI note and it makes sound immediately; every default is just a slot value
+you can reassign.
+
+Source index map (also embedded as menus in the UI):
+```
+ 0 OFF        8 SSG smooth   16 VCM bot     24 TKB C
+ 1 NTO sin    9 SSG stepped  17 RING        25 TKB D
+ 2 NTO saw   10 SSG coupler  18 Noise wht   26 TKB gate
+ 3 NTO var   11 VCFQ LP      19 Noise pnk   27 KEY pitch
+ 4 DSG1 out  12 VCFQ BP      20 RVG stepped 28 KEY gate
+ 5 DSG1 end  13 VCFQ HP      21 RVG smooth  29 VCA1
+ 6 DSG2 out  14 VCM top      22 TKB A       30 VCA2
+ 7 DSG2 end  15 VCM mid      23 TKB B
+```
+All routings tolerate feedback (the whole system sits in one recursive block with a
+single-sample delay), so filter→folder→ring→filter loops are first-class patches.
+
+## 5. Demos (each is fully specified as events in render.cpp)
+
+1. **demo1_default_voice** — the normalized patch: MIDI-style melody, cycling DUSG2
+   sweeps both NTO shape and VCM fold; shape jumps at 5.5 s.
+2. **demo2_vcfq_pings** — no oscillator. TKB gate strikes the VCFQ trigger input,
+   row B retunes the filter per step, RVG randomizes Q (jumps to Q≈32 at 6 s).
+3. **demo3_dusg_bongos** — DUSG1 cycling at audio rate is the oscillator; TKB row A
+   modulates its rise/fall CVs (= pitch); DUSG2 transients strike it through VCA2.
+4. **demo4_ring_fold_drone** — NTO × audio-rate DUSG2 through the ring mod into the
+   bottom folder; RVG-smooth wanders the fold and filter; fold steps up at 10 s.
+5. **demo5_ssg_random_melody** — noise → SSG stepped (TKB-clocked) → NTO pitch;
+   SSG smooth slews a copy into the filter cutoff. Pure Serge generative workflow.
+6. **demo6_wild_animal_feedback** — VCFQ BP → wave multiplier → ring mod (vs. NTO) →
+   back into the filter, steered by SSG-slewed random; fold and Q escalate at 8/12 s.
+
+## 6. V1 modeling notes / known simplifications
+
+- DUSG slopes are linear (integrator toward target). Hardware slopes have mild curve
+  and its trigger threshold interacts with signal-in; V1 uses max(latch, signal).
+- VCM middle section is a sin() folder with bias, not a stage-accurate model of the
+  cascaded full-wave rectifier chain; the bottom is an ideal triangle wrap. Both are
+  the right sonic neighborhood; a component-accurate folder chain is the obvious V2.
+- VCFQ is a TPT SVF with input tanh — clean and stable; the hardware's Q-dependent
+  input-gain quirks and lo/hi gain inputs are folded into the single input-gain knob.
+- No pressure/touch surface on the TKB; MIDI aftertouch → a matrix source is a good V2.
+- Slot amounts are smoothed; selectors switch instantly (clicks when hot-swapping
+  audio-rate sources are authentic banana behavior, arguably a feature).

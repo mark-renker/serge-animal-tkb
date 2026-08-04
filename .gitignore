@@ -1,0 +1,5 @@
+*.o
+*.obj
+render
+serge_gen.cpp
+__pycache__/
