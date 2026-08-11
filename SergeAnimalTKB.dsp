@@ -10,7 +10,9 @@
 // DESTINATIONS with two slots (source selector + attenuverter).
 // Feedback patching is legal everywhere (one-sample loop delay).
 //
-// Build (macOS AU/VST3):  faust2juce -midi -nvoices 1 SergeAnimalTKB.dsp
+// Build (macOS AU/VST3):  ./build.sh    (faust2juce -jsynth -midi -nvoices 1,
+//                         plus the three architecture patches it documents;
+//                         -jsynth is required or MIDI notes never reach the DSP)
 // Quick audition:         drag file into https://faustide.grame.fr
 // =====================================================================
 
@@ -103,60 +105,67 @@ with {
 };
 
 // ---------------------- panel controls -------------------------------
-midiFreq = hslider("h:[00]KEY/[0]freq[unit:Hz]", 261.63, 20, 8000, 0.01);
-midiGate = button("h:[00]KEY/[1]gate");
-midiGain = hslider("h:[00]KEY/[2]gain", 0.8, 0, 1, 0.01) : si.smoo;
-tkbMode  = checkbox("h:[00]KEY/[3]TKB mode");
-glide    = hslider("h:[00]KEY/[4]glide[unit:s]", 0.0, 0, 0.5, 0.001);
+// The whole panel lives inside one top-level TAB group so only one section is
+// on screen at a time. Laid out flat, the Faust JUCE UI stacks every group
+// vertically at fixed widget sizes (hslider 350x50, vslider 80x250), which
+// produced an editor taller than any screen. Tabs plus knob-style TKB steps
+// keep it at roughly 1670x648.
+midiFreq = hslider("t:MAIN/v:[0]VOICE/h:[0]KEY/[0]freq[unit:Hz]", 261.63, 20, 8000, 0.01);
+midiGate = button("t:MAIN/v:[0]VOICE/h:[0]KEY/[1]gate");
+midiGain = hslider("t:MAIN/v:[0]VOICE/h:[0]KEY/[2]gain", 0.8, 0, 1, 0.01) : si.smoo;
+tkbMode  = checkbox("t:MAIN/v:[0]VOICE/h:[0]KEY/[3]TKB mode");
+glide    = hslider("t:MAIN/v:[0]VOICE/h:[0]KEY/[4]glide[unit:s]", 0.0, 0, 0.5, 0.001);
 
-ntoCoarse = hslider("h:[01]NTO/[0]coarse[unit:semi]", 0, -24, 24, 0.01);
-ntoFine   = hslider("h:[01]NTO/[1]fine[unit:cent]", 0, -100, 100, 0.1);
-ntoShape  = hslider("h:[01]NTO/[2]shape", 0.15, 0, 1, 0.001) : si.smoo;
-ntoKtrk   = checkbox("h:[01]NTO/[3]keytrack") + 0*checkbox("h:[01]NTO/[4]init_on");
+ntoCoarse = hslider("t:MAIN/v:[0]VOICE/h:[1]NTO/[0]coarse[unit:semi]", 0, -24, 24, 0.01);
+ntoFine   = hslider("t:MAIN/v:[0]VOICE/h:[1]NTO/[1]fine[unit:cent]", 0, -100, 100, 0.1);
+ntoShape  = hslider("t:MAIN/v:[0]VOICE/h:[1]NTO/[2]shape", 0.15, 0, 1, 0.001) : si.smoo;
+ntoKtrk   = checkbox("t:MAIN/v:[0]VOICE/h:[1]NTO/[3]keytrack")
+            + 0*checkbox("t:MAIN/v:[0]VOICE/h:[1]NTO/[4]init_on");
 
-d1Rise = hslider("h:[02]DUSG1/[0]rise[unit:s][scale:log]", 0.001, 0.00005, 10, 0.00001);
-d1Fall = hslider("h:[02]DUSG1/[1]fall[unit:s][scale:log]", 0.25, 0.00005, 10, 0.00001);
-d1Cyc  = checkbox("h:[02]DUSG1/[2]cycle");
+d1Rise = hslider("t:MAIN/v:[1]SLOPES/h:[0]DUSG1/[0]rise[unit:s][scale:log]", 0.001, 0.00005, 10, 0.00001);
+d1Fall = hslider("t:MAIN/v:[1]SLOPES/h:[0]DUSG1/[1]fall[unit:s][scale:log]", 0.25, 0.00005, 10, 0.00001);
+d1Cyc  = checkbox("t:MAIN/v:[1]SLOPES/h:[0]DUSG1/[2]cycle");
 
-d2Rise = hslider("h:[03]DUSG2/[0]rise[unit:s][scale:log]", 0.05, 0.00005, 10, 0.00001);
-d2Fall = hslider("h:[03]DUSG2/[1]fall[unit:s][scale:log]", 0.05, 0.00005, 10, 0.00001);
-d2Cyc  = checkbox("h:[03]DUSG2/[2]cycle");
+d2Rise = hslider("t:MAIN/v:[1]SLOPES/h:[1]DUSG2/[0]rise[unit:s][scale:log]", 0.05, 0.00005, 10, 0.00001);
+d2Fall = hslider("t:MAIN/v:[1]SLOPES/h:[1]DUSG2/[1]fall[unit:s][scale:log]", 0.05, 0.00005, 10, 0.00001);
+d2Cyc  = checkbox("t:MAIN/v:[1]SLOPES/h:[1]DUSG2/[2]cycle");
 
-smRate = hslider("h:[04]SSG/[0]smooth rate[unit:s][scale:log]", 0.05, 0.00005, 10, 0.00001);
-stRate = hslider("h:[04]SSG/[1]stepped rate[unit:s][scale:log]", 0.001, 0.00005, 10, 0.00001);
+smRate = hslider("t:MAIN/v:[1]SLOPES/h:[2]SSG/[0]smooth rate[unit:s][scale:log]", 0.05, 0.00005, 10, 0.00001);
+stRate = hslider("t:MAIN/v:[1]SLOPES/h:[2]SSG/[1]stepped rate[unit:s][scale:log]", 0.001, 0.00005, 10, 0.00001);
 
-vcfFreq = hslider("h:[05]VCFQ/[0]freq[unit:Hz][scale:log]", 800, 20, 12000, 0.01) : si.smoo;
-vcfQ    = hslider("h:[05]VCFQ/[1]Q[scale:log]", 2, 0.5, 40, 0.01) : si.smoo;
-vcfGain = hslider("h:[05]VCFQ/[2]input gain", 1.0, 0, 2, 0.001) : si.smoo;
-vcfPing = hslider("h:[05]VCFQ/[3]ping level", 0.6, 0, 1, 0.001);
+vcfFreq = hslider("t:MAIN/v:[2]TIMBRE/h:[0]VCFQ/[0]freq[unit:Hz][scale:log]", 800, 20, 12000, 0.01) : si.smoo;
+vcfQ    = hslider("t:MAIN/v:[2]TIMBRE/h:[0]VCFQ/[1]Q[scale:log]", 2, 0.5, 40, 0.01) : si.smoo;
+vcfGain = hslider("t:MAIN/v:[2]TIMBRE/h:[0]VCFQ/[2]input gain", 1.0, 0, 2, 0.001) : si.smoo;
+vcfPing = hslider("t:MAIN/v:[2]TIMBRE/h:[0]VCFQ/[3]ping level", 0.6, 0, 1, 0.001);
 
-vcmTop  = hslider("h:[06]VCM/[0]top drive", 2, 1, 10, 0.01) : si.smoo;
-vcmFold = hslider("h:[06]VCM/[1]fold", 0.3, 0, 1, 0.001) : si.smoo;
-vcmBias = hslider("h:[06]VCM/[2]bias", 0, -1, 1, 0.001) : si.smoo;
+vcmTop  = hslider("t:MAIN/v:[2]TIMBRE/h:[1]VCM/[0]top drive", 2, 1, 10, 0.01) : si.smoo;
+vcmFold = hslider("t:MAIN/v:[2]TIMBRE/h:[1]VCM/[1]fold", 0.3, 0, 1, 0.001) : si.smoo;
+vcmBias = hslider("t:MAIN/v:[2]TIMBRE/h:[1]VCM/[2]bias", 0, -1, 1, 0.001) : si.smoo;
 
-ringGain = hslider("h:[07]RING-NOISE/[0]ring gain", 1, 0.5, 4, 0.01) : si.smoo;
-rvgRate  = hslider("h:[07]RING-NOISE/[1]RVG rate[unit:Hz][scale:log]", 4, 0.05, 50, 0.01);
+ringGain = hslider("t:MAIN/v:[2]TIMBRE/h:[2]RING-NOISE/[0]ring gain", 1, 0.5, 4, 0.01) : si.smoo;
+rvgRate  = hslider("t:MAIN/v:[2]TIMBRE/h:[2]RING-NOISE/[1]RVG rate[unit:Hz][scale:log]", 4, 0.05, 50, 0.01);
 
-tkbOn    = checkbox("h:[08]TKB/h:[0]clock/[0]run");
-tkbRate  = hslider("h:[08]TKB/h:[0]clock/[1]rate[unit:Hz][scale:log]", 2, 0.1, 30, 0.01);
-tkbLen   = hslider("h:[08]TKB/h:[0]clock/[2]length", 8, 1, 16, 1);
-tkbRnd   = checkbox("h:[08]TKB/h:[0]clock/[3]random");
-tkbGateL = hslider("h:[08]TKB/h:[0]clock/[4]gate len[unit:s][scale:log]", 0.1, 0.005, 1, 0.001);
-tkbOct   = hslider("h:[08]TKB/h:[0]clock/[5]range[unit:oct]", 2, 0.5, 5, 0.1);
-rowA(j)  = vslider("h:[08]TKB/h:[1]Row A/[%2j]A%j", 0.5, 0, 1, 0.001) : si.smoo;
-rowB(j)  = vslider("h:[08]TKB/h:[2]Row B/[%2j]B%j", 0.5, 0, 1, 0.001) : si.smoo;
-rowC(j)  = vslider("h:[08]TKB/h:[3]Row C/[%2j]C%j", 0.5, 0, 1, 0.001) : si.smoo;
-rowD(j)  = vslider("h:[08]TKB/h:[4]Row D/[%2j]D%j", 0.5, 0, 1, 0.001) : si.smoo;
+tkbOn    = checkbox("t:MAIN/v:[3]TKB/h:[0]clock/[0]run");
+tkbRate  = hslider("t:MAIN/v:[3]TKB/h:[0]clock/[1]rate[unit:Hz][scale:log]", 2, 0.1, 30, 0.01);
+tkbLen   = hslider("t:MAIN/v:[3]TKB/h:[0]clock/[2]length", 8, 1, 16, 1);
+tkbRnd   = checkbox("t:MAIN/v:[3]TKB/h:[0]clock/[3]random");
+tkbGateL = hslider("t:MAIN/v:[3]TKB/h:[0]clock/[4]gate len[unit:s][scale:log]", 0.1, 0.005, 1, 0.001);
+tkbOct   = hslider("t:MAIN/v:[3]TKB/h:[0]clock/[5]range[unit:oct]", 2, 0.5, 5, 0.1);
+// knob style: 100x100 per step instead of 80x250, so all 4 rows of 16 fit.
+rowA(j)  = vslider("t:MAIN/v:[3]TKB/h:[1]Row A/[%2j]A%j[style:knob]", 0.5, 0, 1, 0.001) : si.smoo;
+rowB(j)  = vslider("t:MAIN/v:[3]TKB/h:[2]Row B/[%2j]B%j[style:knob]", 0.5, 0, 1, 0.001) : si.smoo;
+rowC(j)  = vslider("t:MAIN/v:[3]TKB/h:[3]Row C/[%2j]C%j[style:knob]", 0.5, 0, 1, 0.001) : si.smoo;
+rowD(j)  = vslider("t:MAIN/v:[3]TKB/h:[4]Row D/[%2j]D%j[style:knob]", 0.5, 0, 1, 0.001) : si.smoo;
 
-vca1Lvl = hslider("h:[09]OUT/[0]vca1 level", 0, 0, 1, 0.001) : si.smoo;
-vca1Exp = checkbox("h:[09]OUT/[1]vca1 exp");
-vca2Lvl = hslider("h:[09]OUT/[2]vca2 level", 0, 0, 1, 0.001) : si.smoo;
-vca2Exp = checkbox("h:[09]OUT/[3]vca2 exp");
-pan1    = hslider("h:[09]OUT/[4]pan1", 0.35, 0, 1, 0.001) : si.smoo;
-pan2    = hslider("h:[09]OUT/[5]pan2", 0.65, 0, 1, 0.001) : si.smoo;
-monSel  = nentry("h:[09]OUT/[6]monitor src", 0, 0, 30, 1);
-monLvl  = hslider("h:[09]OUT/[7]monitor level", 0.4, 0, 1, 0.001) : si.smoo;
-master  = hslider("h:[09]OUT/[8]master", 0.8, 0, 1, 0.001) : si.smoo;
+vca1Lvl = hslider("t:MAIN/v:[4]OUT/h:[0]VCA/[0]vca1 level", 0, 0, 1, 0.001) : si.smoo;
+vca1Exp = checkbox("t:MAIN/v:[4]OUT/h:[0]VCA/[1]vca1 exp");
+vca2Lvl = hslider("t:MAIN/v:[4]OUT/h:[0]VCA/[2]vca2 level", 0, 0, 1, 0.001) : si.smoo;
+vca2Exp = checkbox("t:MAIN/v:[4]OUT/h:[0]VCA/[3]vca2 exp");
+pan1    = hslider("t:MAIN/v:[4]OUT/h:[0]VCA/[4]pan1", 0.35, 0, 1, 0.001) : si.smoo;
+pan2    = hslider("t:MAIN/v:[4]OUT/h:[0]VCA/[5]pan2", 0.65, 0, 1, 0.001) : si.smoo;
+monSel  = hslider("t:MAIN/v:[4]OUT/h:[1]MIX/[0]monitor src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+monLvl  = hslider("t:MAIN/v:[4]OUT/h:[1]MIX/[1]monitor level", 0.4, 0, 1, 0.001) : si.smoo;
+master  = hslider("t:MAIN/v:[4]OUT/h:[1]MIX/[2]master", 0.8, 0, 1, 0.001) : si.smoo;
 
 vca(x, cv, lvl, expOn) = x * select2(expOn, gl, gl*gl*gl)
 with { gl = max(0.0, min(1.0, lvl + cv)); };
@@ -181,190 +190,190 @@ with {
   pick(s) = sum(k, 31, (abs(s - k) < 0.5) * srcsig(k));
 
   // ----------------- patch matrix destinations -----------------------
-  dNtoPitchA_s = nentry("t:[10]PATCH/t:[00]NTO/[0]pitch FM A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dNtoPitchA_a = hslider("t:[10]PATCH/t:[00]NTO/[1]pitch FM A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dNtoPitchB_s = nentry("t:[10]PATCH/t:[00]NTO/[2]pitch FM B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dNtoPitchB_a = hslider("t:[10]PATCH/t:[00]NTO/[3]pitch FM B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dNtoPitchA_s = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[0]pitch FM/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dNtoPitchA_a = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[0]pitch FM/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dNtoPitchB_s = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[0]pitch FM/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dNtoPitchB_a = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[0]pitch FM/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dNtoPitch = pick(dNtoPitchA_s)*dNtoPitchA_a + pick(dNtoPitchB_s)*dNtoPitchB_a;
 
-  dNtoLinA_s = nentry("t:[10]PATCH/t:[00]NTO/[0]lin FM A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dNtoLinA_a = hslider("t:[10]PATCH/t:[00]NTO/[1]lin FM A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dNtoLinB_s = nentry("t:[10]PATCH/t:[00]NTO/[2]lin FM B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dNtoLinB_a = hslider("t:[10]PATCH/t:[00]NTO/[3]lin FM B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dNtoLinA_s = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[1]lin FM/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dNtoLinA_a = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[1]lin FM/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dNtoLinB_s = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[1]lin FM/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dNtoLinB_a = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[1]lin FM/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dNtoLin = pick(dNtoLinA_s)*dNtoLinA_a + pick(dNtoLinB_s)*dNtoLinB_a;
 
-  dNtoShapeA_s = nentry("t:[10]PATCH/t:[00]NTO/[0]shape A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dNtoShapeA_a = hslider("t:[10]PATCH/t:[00]NTO/[1]shape A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dNtoShapeB_s = nentry("t:[10]PATCH/t:[00]NTO/[2]shape B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dNtoShapeB_a = hslider("t:[10]PATCH/t:[00]NTO/[3]shape B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dNtoShapeA_s = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[2]shape/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dNtoShapeA_a = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[2]shape/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dNtoShapeB_s = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[2]shape/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dNtoShapeB_a = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[2]shape/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dNtoShape = pick(dNtoShapeA_s)*dNtoShapeA_a + pick(dNtoShapeB_s)*dNtoShapeB_a;
 
-  dNtoSyncA_s = nentry("t:[10]PATCH/t:[00]NTO/[0]sync A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dNtoSyncA_a = hslider("t:[10]PATCH/t:[00]NTO/[1]sync A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dNtoSyncB_s = nentry("t:[10]PATCH/t:[00]NTO/[2]sync B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dNtoSyncB_a = hslider("t:[10]PATCH/t:[00]NTO/[3]sync B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dNtoSyncA_s = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[3]sync/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dNtoSyncA_a = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[3]sync/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dNtoSyncB_s = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[3]sync/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dNtoSyncB_a = hslider("t:MAIN/t:[5]PATCH/v:[00]NTO/h:[3]sync/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dNtoSync = pick(dNtoSyncA_s)*dNtoSyncA_a + pick(dNtoSyncB_s)*dNtoSyncB_a;
 
-  dTrig1A_s = nentry("t:[10]PATCH/t:[01]DUSG1/[0]trig A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 28, 0, 30, 1);
-  dTrig1A_a = hslider("t:[10]PATCH/t:[01]DUSG1/[1]trig A amt", 1.0, -1, 1, 0.001) : si.smoo;
-  dTrig1B_s = nentry("t:[10]PATCH/t:[01]DUSG1/[2]trig B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dTrig1B_a = hslider("t:[10]PATCH/t:[01]DUSG1/[3]trig B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dTrig1A_s = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[0]trig/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 28, 0, 30, 1);
+  dTrig1A_a = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[0]trig/[1]A amt", 1.0, -1, 1, 0.001) : si.smoo;
+  dTrig1B_s = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[0]trig/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dTrig1B_a = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[0]trig/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dTrig1 = pick(dTrig1A_s)*dTrig1A_a + pick(dTrig1B_s)*dTrig1B_a;
 
-  dIn1A_s = nentry("t:[10]PATCH/t:[01]DUSG1/[0]signal in A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dIn1A_a = hslider("t:[10]PATCH/t:[01]DUSG1/[1]signal in A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dIn1B_s = nentry("t:[10]PATCH/t:[01]DUSG1/[2]signal in B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dIn1B_a = hslider("t:[10]PATCH/t:[01]DUSG1/[3]signal in B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dIn1A_s = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[1]signal in/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dIn1A_a = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[1]signal in/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dIn1B_s = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[1]signal in/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dIn1B_a = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[1]signal in/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dIn1 = pick(dIn1A_s)*dIn1A_a + pick(dIn1B_s)*dIn1B_a;
 
-  dRise1A_s = nentry("t:[10]PATCH/t:[01]DUSG1/[0]rise CV A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dRise1A_a = hslider("t:[10]PATCH/t:[01]DUSG1/[1]rise CV A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dRise1B_s = nentry("t:[10]PATCH/t:[01]DUSG1/[2]rise CV B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dRise1B_a = hslider("t:[10]PATCH/t:[01]DUSG1/[3]rise CV B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dRise1A_s = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[2]rise CV/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dRise1A_a = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[2]rise CV/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dRise1B_s = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[2]rise CV/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dRise1B_a = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[2]rise CV/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dRise1 = pick(dRise1A_s)*dRise1A_a + pick(dRise1B_s)*dRise1B_a;
 
-  dFall1A_s = nentry("t:[10]PATCH/t:[01]DUSG1/[0]fall CV A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dFall1A_a = hslider("t:[10]PATCH/t:[01]DUSG1/[1]fall CV A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dFall1B_s = nentry("t:[10]PATCH/t:[01]DUSG1/[2]fall CV B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dFall1B_a = hslider("t:[10]PATCH/t:[01]DUSG1/[3]fall CV B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dFall1A_s = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[3]fall CV/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dFall1A_a = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[3]fall CV/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dFall1B_s = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[3]fall CV/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dFall1B_a = hslider("t:MAIN/t:[5]PATCH/v:[01]DUSG1/h:[3]fall CV/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dFall1 = pick(dFall1A_s)*dFall1A_a + pick(dFall1B_s)*dFall1B_a;
 
-  dTrig2A_s = nentry("t:[10]PATCH/t:[02]DUSG2/[0]trig A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dTrig2A_a = hslider("t:[10]PATCH/t:[02]DUSG2/[1]trig A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dTrig2B_s = nentry("t:[10]PATCH/t:[02]DUSG2/[2]trig B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dTrig2B_a = hslider("t:[10]PATCH/t:[02]DUSG2/[3]trig B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dTrig2A_s = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[0]trig/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dTrig2A_a = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[0]trig/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dTrig2B_s = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[0]trig/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dTrig2B_a = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[0]trig/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dTrig2 = pick(dTrig2A_s)*dTrig2A_a + pick(dTrig2B_s)*dTrig2B_a;
 
-  dIn2A_s = nentry("t:[10]PATCH/t:[02]DUSG2/[0]signal in A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dIn2A_a = hslider("t:[10]PATCH/t:[02]DUSG2/[1]signal in A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dIn2B_s = nentry("t:[10]PATCH/t:[02]DUSG2/[2]signal in B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dIn2B_a = hslider("t:[10]PATCH/t:[02]DUSG2/[3]signal in B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dIn2A_s = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[1]signal in/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dIn2A_a = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[1]signal in/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dIn2B_s = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[1]signal in/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dIn2B_a = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[1]signal in/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dIn2 = pick(dIn2A_s)*dIn2A_a + pick(dIn2B_s)*dIn2B_a;
 
-  dRise2A_s = nentry("t:[10]PATCH/t:[02]DUSG2/[0]rise CV A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dRise2A_a = hslider("t:[10]PATCH/t:[02]DUSG2/[1]rise CV A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dRise2B_s = nentry("t:[10]PATCH/t:[02]DUSG2/[2]rise CV B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dRise2B_a = hslider("t:[10]PATCH/t:[02]DUSG2/[3]rise CV B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dRise2A_s = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[2]rise CV/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dRise2A_a = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[2]rise CV/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dRise2B_s = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[2]rise CV/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dRise2B_a = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[2]rise CV/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dRise2 = pick(dRise2A_s)*dRise2A_a + pick(dRise2B_s)*dRise2B_a;
 
-  dFall2A_s = nentry("t:[10]PATCH/t:[02]DUSG2/[0]fall CV A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dFall2A_a = hslider("t:[10]PATCH/t:[02]DUSG2/[1]fall CV A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dFall2B_s = nentry("t:[10]PATCH/t:[02]DUSG2/[2]fall CV B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dFall2B_a = hslider("t:[10]PATCH/t:[02]DUSG2/[3]fall CV B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dFall2A_s = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[3]fall CV/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dFall2A_a = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[3]fall CV/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dFall2B_s = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[3]fall CV/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dFall2B_a = hslider("t:MAIN/t:[5]PATCH/v:[02]DUSG2/h:[3]fall CV/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dFall2 = pick(dFall2A_s)*dFall2A_a + pick(dFall2B_s)*dFall2B_a;
 
-  dSmInA_s = nentry("t:[10]PATCH/t:[03]SSG/[0]smooth in A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dSmInA_a = hslider("t:[10]PATCH/t:[03]SSG/[1]smooth in A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dSmInB_s = nentry("t:[10]PATCH/t:[03]SSG/[2]smooth in B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dSmInB_a = hslider("t:[10]PATCH/t:[03]SSG/[3]smooth in B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dSmInA_s = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[0]smooth in/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dSmInA_a = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[0]smooth in/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dSmInB_s = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[0]smooth in/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dSmInB_a = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[0]smooth in/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dSmIn = pick(dSmInA_s)*dSmInA_a + pick(dSmInB_s)*dSmInB_a;
 
-  dSRateA_s = nentry("t:[10]PATCH/t:[03]SSG/[0]smooth rate CV A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dSRateA_a = hslider("t:[10]PATCH/t:[03]SSG/[1]smooth rate CV A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dSRateB_s = nentry("t:[10]PATCH/t:[03]SSG/[2]smooth rate CV B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dSRateB_a = hslider("t:[10]PATCH/t:[03]SSG/[3]smooth rate CV B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dSRateA_s = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[1]smooth rate CV/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dSRateA_a = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[1]smooth rate CV/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dSRateB_s = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[1]smooth rate CV/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dSRateB_a = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[1]smooth rate CV/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dSRate = pick(dSRateA_s)*dSRateA_a + pick(dSRateB_s)*dSRateB_a;
 
-  dHoldA_s = nentry("t:[10]PATCH/t:[03]SSG/[0]hold A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dHoldA_a = hslider("t:[10]PATCH/t:[03]SSG/[1]hold A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dHoldB_s = nentry("t:[10]PATCH/t:[03]SSG/[2]hold B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dHoldB_a = hslider("t:[10]PATCH/t:[03]SSG/[3]hold B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dHoldA_s = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[2]hold/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dHoldA_a = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[2]hold/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dHoldB_s = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[2]hold/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dHoldB_a = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[2]hold/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dHold = pick(dHoldA_s)*dHoldA_a + pick(dHoldB_s)*dHoldB_a;
 
-  dStInA_s = nentry("t:[10]PATCH/t:[03]SSG/[0]stepped in A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dStInA_a = hslider("t:[10]PATCH/t:[03]SSG/[1]stepped in A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dStInB_s = nentry("t:[10]PATCH/t:[03]SSG/[2]stepped in B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dStInB_a = hslider("t:[10]PATCH/t:[03]SSG/[3]stepped in B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dStInA_s = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[3]stepped in/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dStInA_a = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[3]stepped in/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dStInB_s = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[3]stepped in/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dStInB_a = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[3]stepped in/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dStIn = pick(dStInA_s)*dStInA_a + pick(dStInB_s)*dStInB_a;
 
-  dStClkA_s = nentry("t:[10]PATCH/t:[03]SSG/[0]stepped clk A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dStClkA_a = hslider("t:[10]PATCH/t:[03]SSG/[1]stepped clk A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dStClkB_s = nentry("t:[10]PATCH/t:[03]SSG/[2]stepped clk B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dStClkB_a = hslider("t:[10]PATCH/t:[03]SSG/[3]stepped clk B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dStClkA_s = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[4]stepped clk/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dStClkA_a = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[4]stepped clk/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dStClkB_s = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[4]stepped clk/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dStClkB_a = hslider("t:MAIN/t:[5]PATCH/v:[03]SSG/h:[4]stepped clk/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dStClk = pick(dStClkA_s)*dStClkA_a + pick(dStClkB_s)*dStClkB_a;
 
-  dVcfInA_s = nentry("t:[10]PATCH/t:[04]VCFQ/[0]audio in A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 15, 0, 30, 1);
-  dVcfInA_a = hslider("t:[10]PATCH/t:[04]VCFQ/[1]audio in A amt", 0.8, -1, 1, 0.001) : si.smoo;
-  dVcfInB_s = nentry("t:[10]PATCH/t:[04]VCFQ/[2]audio in B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dVcfInB_a = hslider("t:[10]PATCH/t:[04]VCFQ/[3]audio in B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dVcfInA_s = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[0]audio in/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 15, 0, 30, 1);
+  dVcfInA_a = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[0]audio in/[1]A amt", 0.8, -1, 1, 0.001) : si.smoo;
+  dVcfInB_s = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[0]audio in/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dVcfInB_a = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[0]audio in/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dVcfIn = pick(dVcfInA_s)*dVcfInA_a + pick(dVcfInB_s)*dVcfInB_a;
 
-  dFcvA_s = nentry("t:[10]PATCH/t:[04]VCFQ/[0]freq CV A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dFcvA_a = hslider("t:[10]PATCH/t:[04]VCFQ/[1]freq CV A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dFcvB_s = nentry("t:[10]PATCH/t:[04]VCFQ/[2]freq CV B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dFcvB_a = hslider("t:[10]PATCH/t:[04]VCFQ/[3]freq CV B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dFcvA_s = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[1]freq CV/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dFcvA_a = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[1]freq CV/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dFcvB_s = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[1]freq CV/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dFcvB_a = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[1]freq CV/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dFcv = pick(dFcvA_s)*dFcvA_a + pick(dFcvB_s)*dFcvB_a;
 
-  dQcvA_s = nentry("t:[10]PATCH/t:[04]VCFQ/[0]Q CV A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dQcvA_a = hslider("t:[10]PATCH/t:[04]VCFQ/[1]Q CV A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dQcvB_s = nentry("t:[10]PATCH/t:[04]VCFQ/[2]Q CV B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dQcvB_a = hslider("t:[10]PATCH/t:[04]VCFQ/[3]Q CV B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dQcvA_s = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[2]Q CV/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dQcvA_a = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[2]Q CV/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dQcvB_s = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[2]Q CV/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dQcvB_a = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[2]Q CV/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dQcv = pick(dQcvA_s)*dQcvA_a + pick(dQcvB_s)*dQcvB_a;
 
-  dPingA_s = nentry("t:[10]PATCH/t:[04]VCFQ/[0]ping trig A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dPingA_a = hslider("t:[10]PATCH/t:[04]VCFQ/[1]ping trig A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dPingB_s = nentry("t:[10]PATCH/t:[04]VCFQ/[2]ping trig B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dPingB_a = hslider("t:[10]PATCH/t:[04]VCFQ/[3]ping trig B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dPingA_s = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[3]ping trig/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dPingA_a = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[3]ping trig/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dPingB_s = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[3]ping trig/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dPingB_a = hslider("t:MAIN/t:[5]PATCH/v:[04]VCFQ/h:[3]ping trig/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dPing = pick(dPingA_s)*dPingA_a + pick(dPingB_s)*dPingB_a;
 
-  dVcmInA_s = nentry("t:[10]PATCH/t:[05]VCM/[0]audio in A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 3, 0, 30, 1);
-  dVcmInA_a = hslider("t:[10]PATCH/t:[05]VCM/[1]audio in A amt", 0.8, -1, 1, 0.001) : si.smoo;
-  dVcmInB_s = nentry("t:[10]PATCH/t:[05]VCM/[2]audio in B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dVcmInB_a = hslider("t:[10]PATCH/t:[05]VCM/[3]audio in B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dVcmInA_s = hslider("t:MAIN/t:[5]PATCH/v:[05]VCM/h:[0]audio in/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 3, 0, 30, 1);
+  dVcmInA_a = hslider("t:MAIN/t:[5]PATCH/v:[05]VCM/h:[0]audio in/[1]A amt", 0.8, -1, 1, 0.001) : si.smoo;
+  dVcmInB_s = hslider("t:MAIN/t:[5]PATCH/v:[05]VCM/h:[0]audio in/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dVcmInB_a = hslider("t:MAIN/t:[5]PATCH/v:[05]VCM/h:[0]audio in/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dVcmIn = pick(dVcmInA_s)*dVcmInA_a + pick(dVcmInB_s)*dVcmInB_a;
 
-  dFoldA_s = nentry("t:[10]PATCH/t:[05]VCM/[0]fold CV A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dFoldA_a = hslider("t:[10]PATCH/t:[05]VCM/[1]fold CV A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dFoldB_s = nentry("t:[10]PATCH/t:[05]VCM/[2]fold CV B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dFoldB_a = hslider("t:[10]PATCH/t:[05]VCM/[3]fold CV B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dFoldA_s = hslider("t:MAIN/t:[5]PATCH/v:[05]VCM/h:[1]fold CV/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dFoldA_a = hslider("t:MAIN/t:[5]PATCH/v:[05]VCM/h:[1]fold CV/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dFoldB_s = hslider("t:MAIN/t:[5]PATCH/v:[05]VCM/h:[1]fold CV/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dFoldB_a = hslider("t:MAIN/t:[5]PATCH/v:[05]VCM/h:[1]fold CV/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dFold = pick(dFoldA_s)*dFoldA_a + pick(dFoldB_s)*dFoldB_a;
 
-  dRingXA_s = nentry("t:[10]PATCH/t:[06]RING/[0]X in A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dRingXA_a = hslider("t:[10]PATCH/t:[06]RING/[1]X in A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dRingXB_s = nentry("t:[10]PATCH/t:[06]RING/[2]X in B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dRingXB_a = hslider("t:[10]PATCH/t:[06]RING/[3]X in B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dRingXA_s = hslider("t:MAIN/t:[5]PATCH/v:[06]RING/h:[0]X in/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dRingXA_a = hslider("t:MAIN/t:[5]PATCH/v:[06]RING/h:[0]X in/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dRingXB_s = hslider("t:MAIN/t:[5]PATCH/v:[06]RING/h:[0]X in/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dRingXB_a = hslider("t:MAIN/t:[5]PATCH/v:[06]RING/h:[0]X in/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dRingX = pick(dRingXA_s)*dRingXA_a + pick(dRingXB_s)*dRingXB_a;
 
-  dRingYA_s = nentry("t:[10]PATCH/t:[06]RING/[0]Y in A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dRingYA_a = hslider("t:[10]PATCH/t:[06]RING/[1]Y in A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dRingYB_s = nentry("t:[10]PATCH/t:[06]RING/[2]Y in B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dRingYB_a = hslider("t:[10]PATCH/t:[06]RING/[3]Y in B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dRingYA_s = hslider("t:MAIN/t:[5]PATCH/v:[06]RING/h:[1]Y in/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dRingYA_a = hslider("t:MAIN/t:[5]PATCH/v:[06]RING/h:[1]Y in/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dRingYB_s = hslider("t:MAIN/t:[5]PATCH/v:[06]RING/h:[1]Y in/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dRingYB_a = hslider("t:MAIN/t:[5]PATCH/v:[06]RING/h:[1]Y in/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dRingY = pick(dRingYA_s)*dRingYA_a + pick(dRingYB_s)*dRingYB_a;
 
-  dV1inA_s = nentry("t:[10]PATCH/t:[07]VCA1/[0]audio in A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 11, 0, 30, 1);
-  dV1inA_a = hslider("t:[10]PATCH/t:[07]VCA1/[1]audio in A amt", 1.0, -1, 1, 0.001) : si.smoo;
-  dV1inB_s = nentry("t:[10]PATCH/t:[07]VCA1/[2]audio in B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dV1inB_a = hslider("t:[10]PATCH/t:[07]VCA1/[3]audio in B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dV1inA_s = hslider("t:MAIN/t:[5]PATCH/v:[07]VCA1/h:[0]audio in/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 11, 0, 30, 1);
+  dV1inA_a = hslider("t:MAIN/t:[5]PATCH/v:[07]VCA1/h:[0]audio in/[1]A amt", 1.0, -1, 1, 0.001) : si.smoo;
+  dV1inB_s = hslider("t:MAIN/t:[5]PATCH/v:[07]VCA1/h:[0]audio in/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dV1inB_a = hslider("t:MAIN/t:[5]PATCH/v:[07]VCA1/h:[0]audio in/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dV1in = pick(dV1inA_s)*dV1inA_a + pick(dV1inB_s)*dV1inB_a;
 
-  dV1cvA_s = nentry("t:[10]PATCH/t:[07]VCA1/[0]CV A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 4, 0, 30, 1);
-  dV1cvA_a = hslider("t:[10]PATCH/t:[07]VCA1/[1]CV A amt", 1.0, -1, 1, 0.001) : si.smoo;
-  dV1cvB_s = nentry("t:[10]PATCH/t:[07]VCA1/[2]CV B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dV1cvB_a = hslider("t:[10]PATCH/t:[07]VCA1/[3]CV B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dV1cvA_s = hslider("t:MAIN/t:[5]PATCH/v:[07]VCA1/h:[1]CV/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 4, 0, 30, 1);
+  dV1cvA_a = hslider("t:MAIN/t:[5]PATCH/v:[07]VCA1/h:[1]CV/[1]A amt", 1.0, -1, 1, 0.001) : si.smoo;
+  dV1cvB_s = hslider("t:MAIN/t:[5]PATCH/v:[07]VCA1/h:[1]CV/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dV1cvB_a = hslider("t:MAIN/t:[5]PATCH/v:[07]VCA1/h:[1]CV/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dV1cv = pick(dV1cvA_s)*dV1cvA_a + pick(dV1cvB_s)*dV1cvB_a;
 
-  dV2inA_s = nentry("t:[10]PATCH/t:[08]VCA2/[0]audio in A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dV2inA_a = hslider("t:[10]PATCH/t:[08]VCA2/[1]audio in A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dV2inB_s = nentry("t:[10]PATCH/t:[08]VCA2/[2]audio in B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dV2inB_a = hslider("t:[10]PATCH/t:[08]VCA2/[3]audio in B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dV2inA_s = hslider("t:MAIN/t:[5]PATCH/v:[08]VCA2/h:[0]audio in/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dV2inA_a = hslider("t:MAIN/t:[5]PATCH/v:[08]VCA2/h:[0]audio in/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dV2inB_s = hslider("t:MAIN/t:[5]PATCH/v:[08]VCA2/h:[0]audio in/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dV2inB_a = hslider("t:MAIN/t:[5]PATCH/v:[08]VCA2/h:[0]audio in/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dV2in = pick(dV2inA_s)*dV2inA_a + pick(dV2inB_s)*dV2inB_a;
 
-  dV2cvA_s = nentry("t:[10]PATCH/t:[08]VCA2/[0]CV A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dV2cvA_a = hslider("t:[10]PATCH/t:[08]VCA2/[1]CV A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dV2cvB_s = nentry("t:[10]PATCH/t:[08]VCA2/[2]CV B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dV2cvB_a = hslider("t:[10]PATCH/t:[08]VCA2/[3]CV B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dV2cvA_s = hslider("t:MAIN/t:[5]PATCH/v:[08]VCA2/h:[1]CV/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dV2cvA_a = hslider("t:MAIN/t:[5]PATCH/v:[08]VCA2/h:[1]CV/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dV2cvB_s = hslider("t:MAIN/t:[5]PATCH/v:[08]VCA2/h:[1]CV/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dV2cvB_a = hslider("t:MAIN/t:[5]PATCH/v:[08]VCA2/h:[1]CV/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dV2cv = pick(dV2cvA_s)*dV2cvA_a + pick(dV2cvB_s)*dV2cvB_a;
 
-  dTkbClkA_s = nentry("t:[10]PATCH/t:[09]TKB/[0]ext clock A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dTkbClkA_a = hslider("t:[10]PATCH/t:[09]TKB/[1]ext clock A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dTkbClkB_s = nentry("t:[10]PATCH/t:[09]TKB/[2]ext clock B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dTkbClkB_a = hslider("t:[10]PATCH/t:[09]TKB/[3]ext clock B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dTkbClkA_s = hslider("t:MAIN/t:[5]PATCH/v:[09]TKB/h:[0]ext clock/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dTkbClkA_a = hslider("t:MAIN/t:[5]PATCH/v:[09]TKB/h:[0]ext clock/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dTkbClkB_s = hslider("t:MAIN/t:[5]PATCH/v:[09]TKB/h:[0]ext clock/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dTkbClkB_a = hslider("t:MAIN/t:[5]PATCH/v:[09]TKB/h:[0]ext clock/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dTkbClk = pick(dTkbClkA_s)*dTkbClkA_a + pick(dTkbClkB_s)*dTkbClkB_a;
 
-  dTkbRstA_s = nentry("t:[10]PATCH/t:[09]TKB/[0]reset A[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dTkbRstA_a = hslider("t:[10]PATCH/t:[09]TKB/[1]reset A amt", 0.0, -1, 1, 0.001) : si.smoo;
-  dTkbRstB_s = nentry("t:[10]PATCH/t:[09]TKB/[2]reset B[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
-  dTkbRstB_a = hslider("t:[10]PATCH/t:[09]TKB/[3]reset B amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dTkbRstA_s = hslider("t:MAIN/t:[5]PATCH/v:[09]TKB/h:[1]reset/[0]A src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dTkbRstA_a = hslider("t:MAIN/t:[5]PATCH/v:[09]TKB/h:[1]reset/[1]A amt", 0.0, -1, 1, 0.001) : si.smoo;
+  dTkbRstB_s = hslider("t:MAIN/t:[5]PATCH/v:[09]TKB/h:[1]reset/[2]B src[style:menu{'OFF':0;'NTO sin':1;'NTO saw':2;'NTO var':3;'DSG1 out':4;'DSG1 end':5;'DSG2 out':6;'DSG2 end':7;'SSG smooth':8;'SSG stepped':9;'SSG coupler':10;'VCFQ LP':11;'VCFQ BP':12;'VCFQ HP':13;'VCM top':14;'VCM mid':15;'VCM bot':16;'RING':17;'Noise wht':18;'Noise pnk':19;'RVG stepped':20;'RVG smooth':21;'TKB A':22;'TKB B':23;'TKB C':24;'TKB D':25;'TKB gate':26;'KEY pitch':27;'KEY gate':28;'VCA1':29;'VCA2':30}]", 0, 0, 30, 1);
+  dTkbRstB_a = hslider("t:MAIN/t:[5]PATCH/v:[09]TKB/h:[1]reset/[3]B amt", 0.0, -1, 1, 0.001) : si.smoo;
   dTkbRst = pick(dTkbRstA_s)*dTkbRstA_a + pick(dTkbRstB_s)*dTkbRstB_a;
 
 

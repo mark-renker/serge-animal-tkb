@@ -47,14 +47,27 @@ DESTS = [
 GROUPS = ["NTO","DUSG1","DUSG2","SSG","VCFQ","VCM","RING","VCA1","VCA2","TKB"]
 GIDX = {g: i for i, g in enumerate(GROUPS)}
 
+# One row per destination inside its module page: [A src][A amt][B src][B amt].
+#
+# Two UI details that matter for the JUCE/plugin build:
+#  * the module group is v: (vertical), NOT t:. A tab group holding raw controls
+#    makes the Faust JUCE UI give every individual control its own tab, so you
+#    can only see one menu or one slider at a time.
+#  * the source selectors are hslider, NOT nentry. JuceGUI::addNumEntry ignores
+#    [style:menu{...}] (only addSlider honours it), so nentry selectors render as
+#    bare 0-30 number spinners instead of named dropdowns. Range/step/default are
+#    identical either way, so this is purely a widget choice.
+rowidx = {}
 slots = []
 for (var, grp, lbl, sa, aa, sb, ab) in DESTS:
-    p = f"t:[10]PATCH/t:[{GIDX[grp]:02d}]{grp}"
+    k = rowidx.get(grp, 0)
+    rowidx[grp] = k + 1
+    p = f"t:MAIN/t:[5]PATCH/v:[{GIDX[grp]:02d}]{grp}/h:[{k}]{lbl}"
     slots.append(
-        f'  {var}A_s = nentry("{p}/[0]{lbl} A{MENU}", {sa}, 0, 30, 1);\n'
-        f'  {var}A_a = hslider("{p}/[1]{lbl} A amt", {aa}, -1, 1, 0.001) : si.smoo;\n'
-        f'  {var}B_s = nentry("{p}/[2]{lbl} B{MENU}", {sb}, 0, 30, 1);\n'
-        f'  {var}B_a = hslider("{p}/[3]{lbl} B amt", {ab}, -1, 1, 0.001) : si.smoo;\n'
+        f'  {var}A_s = hslider("{p}/[0]A src{MENU}", {sa}, 0, 30, 1);\n'
+        f'  {var}A_a = hslider("{p}/[1]A amt", {aa}, -1, 1, 0.001) : si.smoo;\n'
+        f'  {var}B_s = hslider("{p}/[2]B src{MENU}", {sb}, 0, 30, 1);\n'
+        f'  {var}B_a = hslider("{p}/[3]B amt", {ab}, -1, 1, 0.001) : si.smoo;\n'
         f'  {var} = pick({var}A_s)*{var}A_a + pick({var}B_s)*{var}B_a;\n'
     )
 SLOTS = "\n".join(slots)
@@ -71,7 +84,9 @@ HEADER = r'''// ================================================================
 // DESTINATIONS with two slots (source selector + attenuverter).
 // Feedback patching is legal everywhere (one-sample loop delay).
 //
-// Build (macOS AU/VST3):  faust2juce -midi -nvoices 1 SergeAnimalTKB.dsp
+// Build (macOS AU/VST3):  ./build.sh    (faust2juce -jsynth -midi -nvoices 1,
+//                         plus the three architecture patches it documents;
+//                         -jsynth is required or MIDI notes never reach the DSP)
 // Quick audition:         drag file into https://faustide.grame.fr
 // =====================================================================
 
@@ -164,60 +179,67 @@ with {
 };
 
 // ---------------------- panel controls -------------------------------
-midiFreq = hslider("h:[00]KEY/[0]freq[unit:Hz]", 261.63, 20, 8000, 0.01);
-midiGate = button("h:[00]KEY/[1]gate");
-midiGain = hslider("h:[00]KEY/[2]gain", 0.8, 0, 1, 0.01) : si.smoo;
-tkbMode  = checkbox("h:[00]KEY/[3]TKB mode");
-glide    = hslider("h:[00]KEY/[4]glide[unit:s]", 0.0, 0, 0.5, 0.001);
+// The whole panel lives inside one top-level TAB group so only one section is
+// on screen at a time. Laid out flat, the Faust JUCE UI stacks every group
+// vertically at fixed widget sizes (hslider 350x50, vslider 80x250), which
+// produced an editor taller than any screen. Tabs plus knob-style TKB steps
+// keep it at roughly 1670x648.
+midiFreq = hslider("t:MAIN/v:[0]VOICE/h:[0]KEY/[0]freq[unit:Hz]", 261.63, 20, 8000, 0.01);
+midiGate = button("t:MAIN/v:[0]VOICE/h:[0]KEY/[1]gate");
+midiGain = hslider("t:MAIN/v:[0]VOICE/h:[0]KEY/[2]gain", 0.8, 0, 1, 0.01) : si.smoo;
+tkbMode  = checkbox("t:MAIN/v:[0]VOICE/h:[0]KEY/[3]TKB mode");
+glide    = hslider("t:MAIN/v:[0]VOICE/h:[0]KEY/[4]glide[unit:s]", 0.0, 0, 0.5, 0.001);
 
-ntoCoarse = hslider("h:[01]NTO/[0]coarse[unit:semi]", 0, -24, 24, 0.01);
-ntoFine   = hslider("h:[01]NTO/[1]fine[unit:cent]", 0, -100, 100, 0.1);
-ntoShape  = hslider("h:[01]NTO/[2]shape", 0.15, 0, 1, 0.001) : si.smoo;
-ntoKtrk   = checkbox("h:[01]NTO/[3]keytrack") + 0*checkbox("h:[01]NTO/[4]init_on");
+ntoCoarse = hslider("t:MAIN/v:[0]VOICE/h:[1]NTO/[0]coarse[unit:semi]", 0, -24, 24, 0.01);
+ntoFine   = hslider("t:MAIN/v:[0]VOICE/h:[1]NTO/[1]fine[unit:cent]", 0, -100, 100, 0.1);
+ntoShape  = hslider("t:MAIN/v:[0]VOICE/h:[1]NTO/[2]shape", 0.15, 0, 1, 0.001) : si.smoo;
+ntoKtrk   = checkbox("t:MAIN/v:[0]VOICE/h:[1]NTO/[3]keytrack")
+            + 0*checkbox("t:MAIN/v:[0]VOICE/h:[1]NTO/[4]init_on");
 
-d1Rise = hslider("h:[02]DUSG1/[0]rise[unit:s][scale:log]", 0.001, 0.00005, 10, 0.00001);
-d1Fall = hslider("h:[02]DUSG1/[1]fall[unit:s][scale:log]", 0.25, 0.00005, 10, 0.00001);
-d1Cyc  = checkbox("h:[02]DUSG1/[2]cycle");
+d1Rise = hslider("t:MAIN/v:[1]SLOPES/h:[0]DUSG1/[0]rise[unit:s][scale:log]", 0.001, 0.00005, 10, 0.00001);
+d1Fall = hslider("t:MAIN/v:[1]SLOPES/h:[0]DUSG1/[1]fall[unit:s][scale:log]", 0.25, 0.00005, 10, 0.00001);
+d1Cyc  = checkbox("t:MAIN/v:[1]SLOPES/h:[0]DUSG1/[2]cycle");
 
-d2Rise = hslider("h:[03]DUSG2/[0]rise[unit:s][scale:log]", 0.05, 0.00005, 10, 0.00001);
-d2Fall = hslider("h:[03]DUSG2/[1]fall[unit:s][scale:log]", 0.05, 0.00005, 10, 0.00001);
-d2Cyc  = checkbox("h:[03]DUSG2/[2]cycle");
+d2Rise = hslider("t:MAIN/v:[1]SLOPES/h:[1]DUSG2/[0]rise[unit:s][scale:log]", 0.05, 0.00005, 10, 0.00001);
+d2Fall = hslider("t:MAIN/v:[1]SLOPES/h:[1]DUSG2/[1]fall[unit:s][scale:log]", 0.05, 0.00005, 10, 0.00001);
+d2Cyc  = checkbox("t:MAIN/v:[1]SLOPES/h:[1]DUSG2/[2]cycle");
 
-smRate = hslider("h:[04]SSG/[0]smooth rate[unit:s][scale:log]", 0.05, 0.00005, 10, 0.00001);
-stRate = hslider("h:[04]SSG/[1]stepped rate[unit:s][scale:log]", 0.001, 0.00005, 10, 0.00001);
+smRate = hslider("t:MAIN/v:[1]SLOPES/h:[2]SSG/[0]smooth rate[unit:s][scale:log]", 0.05, 0.00005, 10, 0.00001);
+stRate = hslider("t:MAIN/v:[1]SLOPES/h:[2]SSG/[1]stepped rate[unit:s][scale:log]", 0.001, 0.00005, 10, 0.00001);
 
-vcfFreq = hslider("h:[05]VCFQ/[0]freq[unit:Hz][scale:log]", 800, 20, 12000, 0.01) : si.smoo;
-vcfQ    = hslider("h:[05]VCFQ/[1]Q[scale:log]", 2, 0.5, 40, 0.01) : si.smoo;
-vcfGain = hslider("h:[05]VCFQ/[2]input gain", 1.0, 0, 2, 0.001) : si.smoo;
-vcfPing = hslider("h:[05]VCFQ/[3]ping level", 0.6, 0, 1, 0.001);
+vcfFreq = hslider("t:MAIN/v:[2]TIMBRE/h:[0]VCFQ/[0]freq[unit:Hz][scale:log]", 800, 20, 12000, 0.01) : si.smoo;
+vcfQ    = hslider("t:MAIN/v:[2]TIMBRE/h:[0]VCFQ/[1]Q[scale:log]", 2, 0.5, 40, 0.01) : si.smoo;
+vcfGain = hslider("t:MAIN/v:[2]TIMBRE/h:[0]VCFQ/[2]input gain", 1.0, 0, 2, 0.001) : si.smoo;
+vcfPing = hslider("t:MAIN/v:[2]TIMBRE/h:[0]VCFQ/[3]ping level", 0.6, 0, 1, 0.001);
 
-vcmTop  = hslider("h:[06]VCM/[0]top drive", 2, 1, 10, 0.01) : si.smoo;
-vcmFold = hslider("h:[06]VCM/[1]fold", 0.3, 0, 1, 0.001) : si.smoo;
-vcmBias = hslider("h:[06]VCM/[2]bias", 0, -1, 1, 0.001) : si.smoo;
+vcmTop  = hslider("t:MAIN/v:[2]TIMBRE/h:[1]VCM/[0]top drive", 2, 1, 10, 0.01) : si.smoo;
+vcmFold = hslider("t:MAIN/v:[2]TIMBRE/h:[1]VCM/[1]fold", 0.3, 0, 1, 0.001) : si.smoo;
+vcmBias = hslider("t:MAIN/v:[2]TIMBRE/h:[1]VCM/[2]bias", 0, -1, 1, 0.001) : si.smoo;
 
-ringGain = hslider("h:[07]RING-NOISE/[0]ring gain", 1, 0.5, 4, 0.01) : si.smoo;
-rvgRate  = hslider("h:[07]RING-NOISE/[1]RVG rate[unit:Hz][scale:log]", 4, 0.05, 50, 0.01);
+ringGain = hslider("t:MAIN/v:[2]TIMBRE/h:[2]RING-NOISE/[0]ring gain", 1, 0.5, 4, 0.01) : si.smoo;
+rvgRate  = hslider("t:MAIN/v:[2]TIMBRE/h:[2]RING-NOISE/[1]RVG rate[unit:Hz][scale:log]", 4, 0.05, 50, 0.01);
 
-tkbOn    = checkbox("h:[08]TKB/h:[0]clock/[0]run");
-tkbRate  = hslider("h:[08]TKB/h:[0]clock/[1]rate[unit:Hz][scale:log]", 2, 0.1, 30, 0.01);
-tkbLen   = hslider("h:[08]TKB/h:[0]clock/[2]length", 8, 1, 16, 1);
-tkbRnd   = checkbox("h:[08]TKB/h:[0]clock/[3]random");
-tkbGateL = hslider("h:[08]TKB/h:[0]clock/[4]gate len[unit:s][scale:log]", 0.1, 0.005, 1, 0.001);
-tkbOct   = hslider("h:[08]TKB/h:[0]clock/[5]range[unit:oct]", 2, 0.5, 5, 0.1);
-rowA(j)  = vslider("h:[08]TKB/h:[1]Row A/[%2j]A%j", 0.5, 0, 1, 0.001) : si.smoo;
-rowB(j)  = vslider("h:[08]TKB/h:[2]Row B/[%2j]B%j", 0.5, 0, 1, 0.001) : si.smoo;
-rowC(j)  = vslider("h:[08]TKB/h:[3]Row C/[%2j]C%j", 0.5, 0, 1, 0.001) : si.smoo;
-rowD(j)  = vslider("h:[08]TKB/h:[4]Row D/[%2j]D%j", 0.5, 0, 1, 0.001) : si.smoo;
+tkbOn    = checkbox("t:MAIN/v:[3]TKB/h:[0]clock/[0]run");
+tkbRate  = hslider("t:MAIN/v:[3]TKB/h:[0]clock/[1]rate[unit:Hz][scale:log]", 2, 0.1, 30, 0.01);
+tkbLen   = hslider("t:MAIN/v:[3]TKB/h:[0]clock/[2]length", 8, 1, 16, 1);
+tkbRnd   = checkbox("t:MAIN/v:[3]TKB/h:[0]clock/[3]random");
+tkbGateL = hslider("t:MAIN/v:[3]TKB/h:[0]clock/[4]gate len[unit:s][scale:log]", 0.1, 0.005, 1, 0.001);
+tkbOct   = hslider("t:MAIN/v:[3]TKB/h:[0]clock/[5]range[unit:oct]", 2, 0.5, 5, 0.1);
+// knob style: 100x100 per step instead of 80x250, so all 4 rows of 16 fit.
+rowA(j)  = vslider("t:MAIN/v:[3]TKB/h:[1]Row A/[%2j]A%j[style:knob]", 0.5, 0, 1, 0.001) : si.smoo;
+rowB(j)  = vslider("t:MAIN/v:[3]TKB/h:[2]Row B/[%2j]B%j[style:knob]", 0.5, 0, 1, 0.001) : si.smoo;
+rowC(j)  = vslider("t:MAIN/v:[3]TKB/h:[3]Row C/[%2j]C%j[style:knob]", 0.5, 0, 1, 0.001) : si.smoo;
+rowD(j)  = vslider("t:MAIN/v:[3]TKB/h:[4]Row D/[%2j]D%j[style:knob]", 0.5, 0, 1, 0.001) : si.smoo;
 
-vca1Lvl = hslider("h:[09]OUT/[0]vca1 level", 0, 0, 1, 0.001) : si.smoo;
-vca1Exp = checkbox("h:[09]OUT/[1]vca1 exp");
-vca2Lvl = hslider("h:[09]OUT/[2]vca2 level", 0, 0, 1, 0.001) : si.smoo;
-vca2Exp = checkbox("h:[09]OUT/[3]vca2 exp");
-pan1    = hslider("h:[09]OUT/[4]pan1", 0.35, 0, 1, 0.001) : si.smoo;
-pan2    = hslider("h:[09]OUT/[5]pan2", 0.65, 0, 1, 0.001) : si.smoo;
-monSel  = nentry("h:[09]OUT/[6]monitor src", 0, 0, 30, 1);
-monLvl  = hslider("h:[09]OUT/[7]monitor level", 0.4, 0, 1, 0.001) : si.smoo;
-master  = hslider("h:[09]OUT/[8]master", 0.8, 0, 1, 0.001) : si.smoo;
+vca1Lvl = hslider("t:MAIN/v:[4]OUT/h:[0]VCA/[0]vca1 level", 0, 0, 1, 0.001) : si.smoo;
+vca1Exp = checkbox("t:MAIN/v:[4]OUT/h:[0]VCA/[1]vca1 exp");
+vca2Lvl = hslider("t:MAIN/v:[4]OUT/h:[0]VCA/[2]vca2 level", 0, 0, 1, 0.001) : si.smoo;
+vca2Exp = checkbox("t:MAIN/v:[4]OUT/h:[0]VCA/[3]vca2 exp");
+pan1    = hslider("t:MAIN/v:[4]OUT/h:[0]VCA/[4]pan1", 0.35, 0, 1, 0.001) : si.smoo;
+pan2    = hslider("t:MAIN/v:[4]OUT/h:[0]VCA/[5]pan2", 0.65, 0, 1, 0.001) : si.smoo;
+monSel  = hslider("t:MAIN/v:[4]OUT/h:[1]MIX/[0]monitor src__MENU__", 0, 0, 30, 1);
+monLvl  = hslider("t:MAIN/v:[4]OUT/h:[1]MIX/[1]monitor level", 0.4, 0, 1, 0.001) : si.smoo;
+master  = hslider("t:MAIN/v:[4]OUT/h:[1]MIX/[2]master", 0.8, 0, 1, 0.001) : si.smoo;
 
 vca(x, cv, lvl, expOn) = x * select2(expOn, gl, gl*gl*gl)
 with { gl = max(0.0, min(1.0, lvl + cv)); };
@@ -320,6 +342,9 @@ __SLOTS__
 process = (big ~ si.bus(30)) : (si.block(30), _, _);
 '''
 
-src = HEADER.replace("__SLOTS__", SLOTS)
-open("/home/claude/serge/SergeAnimalTKB.dsp", "w").write(src)
-print("wrote", len(src), "bytes")
+import os
+
+src = HEADER.replace("__SLOTS__", SLOTS).replace("__MENU__", MENU)
+out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SergeAnimalTKB.dsp")
+open(out, "w").write(src)
+print("wrote", len(src), "bytes to", out)
