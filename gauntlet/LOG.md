@@ -61,3 +61,37 @@
 mouse click-Y = TKB pressure; GLIDE knob stands in for hardware row-B glide
 routing; LENGTH knob is a v1-ism kept; VCFQ AGC law is fitted (logged when
 fitted).
+
+## 2026-08-31 — Foundation stage 2: UI skeleton + UX gates live + perf spike
+
+- `src/ui/` landed: Look.h/Widgets.h ported from PF50 (house style unchanged;
+  deprecated `Font::getStringWidthFloat` replaced with the JUCE 8
+  GlyphArrangement API), plus v2 additions — mandatory >= 15-char tooltip on
+  every widget type (Tooltips.h curates the texts per SPEC §4), TouchPadW
+  (momentary pad via MomentaryFlag, click height -> PRESSURE ctl, active-stage
+  highlight), ChoiceW menus, zoom control, shared TooltipWindow, aspect-locked
+  0.5x–2.4x resize with the persisted editor scale as single source of truth.
+  MainView is the foundation SKELETON (generic auto-layout per module + blocked
+  TKB strip); the UI fan-out replaces layouts only.
+- G2u live: satk_uxtests implements U01–U04, 22/22 green. Gotcha fixed during
+  bring-up: `setResizeLimits()` in the editor ctor constrains the initial 0x0
+  bounds up to the minimum, firing resized() and clobbering the restored scale
+  — the ctor must capture the persisted scale before installing limits.
+- **Perf spike (T16 plan decision)**: `satk_perfspike` loads the stubs with
+  representative hero-tier costs (2x-OS islands on VCFQ / 3x VCM / RING / NTO
+  shaper, ADAA kernels, PCG32, OU drift). Full graph, T16 protocol: 2,240
+  cycles/sample = **32.6x realtime** (gate 6x, headroom 5.4x). Decision: hero
+  tier for every module, no downgrades; results + re-measure rule frozen in
+  docs/SPEC.md §10.
+
+### Foundation interpretation notes (copied from SPEC.md §9 per core builder)
+
+- **TKB RANGE** is frozen as scaling ALL row outputs A–D/ABCD (a v1-ism kept
+  for continuity; hardware range semantics differ per row usage).
+- **RING trims**: 0 = calibrated minimum bleed (≥ 55 dB suppression, T09),
+  max ≥ −50 dB bleed — resolves T09's trim-range wording.
+- v1 render findings worth keeping (from gauntlet/renders/v1/MANIFEST.md):
+  v1's VCM bottom is purely ODD-harmonic (hardware/T08 wants even-dominant);
+  v1's shape-sweep centroid is non-monotonic; v1's ring is unsuppressed AM;
+  v1's NTO saw alias floor is −27 dBc (T03 wants ≤ −60/−30). These are the
+  sound-bar dimensions v2 must win.
