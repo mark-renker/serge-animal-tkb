@@ -245,3 +245,11 @@ Self-contained section (NTO builder). Files: `src/engine/ModulesNTO.h`
 - Perf: NTO ≈ 350 cyc/sample bare (spike 414); full-system T16 ≈ 60× realtime.
 - Evidence: `gauntlet/renders/v2work/nto/nto_evidence.wav` (12 s mono: saw
   1975 Hz, VAR shape sweep, TZFM with rising index, soft-sync sweep).
+
+## 2026-11-02 — Integration amendment: ANALOG DRIFT wired to NTO (System.h)
+
+- `System()` now sets `nto->driftDepth = &out->ctls[OUT::cDrift].v`, so the
+  global ANALOG DRIFT ctl (default 0.2) reaches the NTO drift/tolerance layer.
+  One-line wiring only; no jack/ctl/index changes. Approved by Mark.
+  Before this, the knob had no effect on the NTO (only the T17 tests set the
+  pointer). Gauntlet 151/151 with drift live.

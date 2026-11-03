@@ -54,6 +54,7 @@ struct System
 
         wireMonitor();
         out->velSrc = &key->jacks[KEY::jVel].value; // velocity scales final mix (v1)
+        nto->driftDepth = &out->ctls[OUT::cDrift].v; // global ANALOG DRIFT -> NTO (T17)
     }
 
     void prepare (double sr) { engine.prepare (sr); }
