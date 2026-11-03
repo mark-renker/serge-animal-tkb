@@ -45,7 +45,11 @@ public:
     // editor scale: single source of truth for zoom AND drag-resize (U01/U02);
     // persisted in plugin state.
     float getEditorScale() const noexcept { return editorScale.load(); }
-    void  setEditorScale (float s) noexcept { editorScale.store (s); }
+    void  setEditorScale (float s) noexcept { editorScale.store (s); }   // panel ZOOM
+    // editor WINDOW size (independent of zoom since free-shape resize); 0 = unset
+    int   getEditorW() const noexcept { return editorW.load(); }
+    int   getEditorH() const noexcept { return editorH.load(); }
+    void  setEditorSize (int w, int h) noexcept { editorW.store (w); editorH.store (h); }
 
     // engine instance seed (persisted; analog layer derives from it — T14/T17)
     juce::uint64 instanceSeed() const noexcept { return (juce::uint64) sys.engine.seed(); }
@@ -69,6 +73,7 @@ private:
 
     std::atomic<int> cableVer { 0 };
     std::atomic<float> editorScale { 1.0f };
+    std::atomic<int>   editorW { 0 }, editorH { 0 };
     int heldNote = -1;
     juce::SortedSet<int> notesDown;
     double clockPhase = 0.0; bool wasPlaying = false;

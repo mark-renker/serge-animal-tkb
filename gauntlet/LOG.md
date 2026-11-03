@@ -120,3 +120,18 @@ fitted).
 - **T10 test fix**: warm-up tick before baselining (jacks read 0 until the
   first tick) and 0.1 % slew tolerance (RATE default 0.6344 = ~4.001 Hz).
 - Gauntlet 80/80, UX 22/22, zero warnings in our sources.
+
+## 2026-11-02 — UI amendment: free-shape window + independent zoom (U01/U02)
+
+Requested by Mark (option 3 of: reflow / stretch / scroll-and-zoom). Supersedes
+the rev-B "aspect-locked resize, zoom and drag write the same scale" wording.
+- Window resizes to any shape (min 420×300, max = panel at 2.4×); it is a
+  viewport onto the panel and never changes the zoom. Scrollbars when the panel
+  overflows; wheel/trackpad scrolls; drag on empty panel space pans 1:1.
+- ZOOM menu (Fit, 50–240 %) and Cmd+wheel (toward the pointer) scale the panel
+  only. Knobs now turn with Option+wheel (plain wheel scrolls the panel).
+- Header (title, ZOOM, CLEAR) pinned above the scrolling panel.
+- Persisted state: `editorScale` (zoom) + new `editorW`/`editorH` (window).
+  First open: whole panel at the saved zoom, clipped to 92 %×88 % of the screen.
+- U01/U02 rewritten to these contracts (29/29 UX). Label fixes alongside: long
+  module titles wrap to two lines (RVG), VCA LIN/EXP labels moved to the switch.

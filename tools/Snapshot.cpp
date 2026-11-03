@@ -4,6 +4,7 @@
 // Usage: satk_snapshot <out.png>
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "../src/plugin/PluginProcessor.h"
+#include "../src/ui/MainView.h"
 
 int main (int argc, char** argv)
 {
@@ -17,11 +18,16 @@ int main (int argc, char** argv)
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     if (ed == nullptr) { std::printf ("no editor\n"); return 1; }
 
+    // show the whole panel at 1:1 (the window would otherwise be clipped to the screen)
+    if (auto* se = dynamic_cast<satkui::SatkEditor*> (ed.get()))
+        se->setScaleStep (1.0f);
+
     // flush async ParameterAttachment updates so controls render at value
     for (int i = 0; i < 5; ++i)
         juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
 
-    auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.25f);
+    const float scale = argc > 2 ? (float) std::atof (argv[2]) : 1.25f;
+    auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, scale);
     juce::File f = juce::File::getCurrentWorkingDirectory().getChildFile (outPath);
     f.deleteFile();
     juce::FileOutputStream os (f);

@@ -75,8 +75,11 @@ public:
     }
     void mouseUp (const juce::MouseEvent&) override { att.endGesture(); }
     void mouseDoubleClick (const juce::MouseEvent&) override { att.setValueAsCompleteGesture (defaultVal); }
-    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w) override
+    // plain wheel/trackpad scroll pans the panel (passes up to the viewport);
+    // Option(Alt)+wheel fine-adjusts the knob
+    void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
     {
+        if (! e.mods.isAltDown()) { juce::Component::mouseWheelMove (e, w); return; }
         att.setValueAsCompleteGesture (juce::jlimit (0.0f, 1.0f, val + (float) w.deltaY * 0.08f));
     }
     float defaultVal = 0.5f;
@@ -228,6 +231,9 @@ public:
         : mod (m), wIn (widthInches), host (hostRef), proc (p)
     {
         setSize ((int) (wIn * PX), (int) (MOD_H * PX));
+        // empty panel space passes clicks up to the PanelView (drag-to-pan);
+        // the widgets on the panel still receive their own clicks
+        setInterceptsMouseClicks (false, true);
     }
 
     struct TextItem { juce::String text; juce::Rectangle<float> r; float h; bool boxed; };
@@ -338,10 +344,24 @@ public:
         if (! darkFace)
         {
             g.setColour (inkCol);
-            g.setFont (panelFont (0.205f * PX, true));
-            g.drawFittedText (mod.title,
-                              juce::Rectangle<float> (4.0f, 0.20f * PX, (float) getWidth() - 8.0f, 0.28f * PX).getSmallestIntegerContainer(),
-                              juce::Justification::centred, 1, 0.62f);
+            // long names wrap to two lines like the STS panel titles
+            // ("SMOOTH / STEPPED / GENERATOR") instead of truncating
+            const float avail = (float) getWidth() - 8.0f;
+            const auto oneLine = panelFont (0.205f * PX, true);
+            if (textWidth (oneLine, mod.title) * 0.78f <= avail) // fits with mild squeeze
+            {
+                g.setFont (oneLine);
+                g.drawFittedText (mod.title,
+                                  juce::Rectangle<float> (4.0f, 0.20f * PX, avail, 0.28f * PX).getSmallestIntegerContainer(),
+                                  juce::Justification::centred, 1, 0.62f);
+            }
+            else
+            {
+                g.setFont (panelFont (0.17f * PX, true));
+                g.drawFittedText (mod.title,
+                                  juce::Rectangle<float> (4.0f, 0.12f * PX, avail, 0.46f * PX).getSmallestIntegerContainer(),
+                                  juce::Justification::centred, 2, 0.8f);
+            }
         }
 
         for (auto& [fr, fc] : fills)

@@ -1,11 +1,12 @@
 // Serge Animal TKB v2 — G2u UX suite (satk_uxtests). JUCE-linked, headless.
 // Requires a logged-in GUI session and JUCE_MODAL_LOOPS_PERMITTED=1
 // (documented constraint, GAUNTLET rev B).
-//   U01 — constrainer range >= 0.5x-2.4x, aspect-locked; the persisted value
-//         IS the actual editor scale (a float).
-//   U02 — the visible ZOOM control sets discrete steps by writing that same
-//         persisted scale; drag-resize writes it too; scale + cables + params
-//         survive a full plugin state round-trip.
+//   U01 — free-shape window (amendment 2026-11-02): no aspect lock, small
+//         minimum, max covers the panel at 2.4x; resizing never changes the
+//         zoom; window size persists; scrollbars appear when the panel overflows.
+//   U02 — the visible ZOOM control (steps + Fit) and Cmd+wheel set the panel
+//         zoom without resizing the window; zoom + window size + cables +
+//         params survive a full plugin state round-trip.
 //   U03 — every interactive widget (knob, jack, button, toggle, TKB pad,
 //         menu) returns a tooltip >= 15 chars; a shared TooltipWindow is
 //         installed.
@@ -81,46 +82,72 @@ int main()
     std::printf ("editor logical size: %dx%d\n", W, H);
 
     // ---------------------------------------------------------------- U01 --
-    GROUP ("U01 constrained aspect-locked resize, persisted scale = actual scale");
+    GROUP ("U01 free-shape window, independent of zoom");
     {
         auto* con = ed->getConstrainer();
         CHECK (con != nullptr, "editor has a constrainer");
-        const double aspect = (double) W / (double) H;
-        CHECK (std::abs (con->getFixedAspectRatio() - aspect) < 1e-3,
-               "aspect ratio locked to the panel", con->getFixedAspectRatio(), aspect);
-        CHECK (con->getMinimumWidth() <= (int) std::lround (W * 0.5)
+        CHECK (con->getFixedAspectRatio() == 0.0, "no aspect lock (free shape)", con->getFixedAspectRatio());
+        CHECK (con->getMinimumWidth() <= 480 && con->getMinimumHeight() <= 320
                && con->getMaximumWidth() >= (int) std::lround (W * 2.4),
-               "resize range covers 0.5x-2.4x base width",
+               "resize range: small minimum, max covers panel at 2.4x",
                con->getMinimumWidth(), con->getMaximumWidth());
 
-        bool scaleTracks = true;
-        for (float s : { 0.5f, 0.9f, 1.0f, 1.7f, 2.4f })
+        ed->setScaleStep (1.0f);
+        bool zoomFixed = true, sizePersisted = true;
+        for (auto wh : { juce::Point<int> (1400, 500), juce::Point<int> (500, 900),
+                         juce::Point<int> (900, 700), juce::Point<int> (W, H + satkui::HEADER_H) })
         {
-            ed->setSize ((int) std::lround ((float) W * s), (int) std::lround ((float) H * s));
-            if (std::abs (proc.getEditorScale() - s) > 0.01f) scaleTracks = false;
+            ed->setSize (wh.x, wh.y);
+            if (std::abs (ed->getZoom() - 1.0f) > 1e-4f || std::abs (proc.getEditorScale() - 1.0f) > 1e-4f) zoomFixed = false;
+            if (proc.getEditorW() != wh.x || proc.getEditorH() != wh.y) sizePersisted = false;
         }
-        CHECK (scaleTracks, "drag-resize path writes the persisted scale float",
-               proc.getEditorScale());
+        CHECK (zoomFixed, "resizing the window never changes the zoom", ed->getZoom());
+        CHECK (sizePersisted, "window size is persisted as resized", proc.getEditorW(), proc.getEditorH());
+
+        ed->setSize (600, 400);
+        pump (1);
+        CHECK (ed->viewport.getVerticalScrollBar().isVisible() && ed->viewport.getHorizontalScrollBar().isVisible(),
+               "small window: panel scrolls (both scrollbars)");
+        const auto before = ed->viewport.getViewPosition();
+        ed->view.onPan ({ -120, -80 });
+        CHECK (ed->viewport.getViewPosition() == before + juce::Point<int> (120, 80),
+               "drag on empty panel pans the view 1:1", ed->viewport.getViewPositionX(), ed->viewport.getViewPositionY());
     }
 
     // ---------------------------------------------------------------- U02 --
-    GROUP ("U02 zoom control + full plugin state round-trip");
+    GROUP ("U02 zoom control (steps, Fit, Cmd+wheel) + full plugin state round-trip");
     {
-        // the UI-visible zoom control drives the same persisted scale
-        ed->view.zoomBox.setSelectedId (150, juce::sendNotificationSync);
+        ed->setSize (900, 700);
+        ed->zoomBox.setSelectedId (150, juce::sendNotificationSync);
         pump (2);
         CHECK (std::abs (proc.getEditorScale() - 1.5f) < 0.01f,
-               "ZOOM 150% writes persisted scale 1.5", proc.getEditorScale());
-        CHECK (ed->getWidth() == (int) std::lround ((float) W * 1.5f),
-               "editor window follows the zoom step", ed->getWidth(), (double) W * 1.5);
+               "ZOOM 150% writes persisted zoom 1.5", proc.getEditorScale());
+        CHECK (ed->getWidth() == 900 && ed->getHeight() == 700,
+               "zoom step leaves the window size alone", ed->getWidth(), ed->getHeight());
+        CHECK (ed->viewport.getViewedComponent()->getWidth() == (int) std::ceil ((float) W * 1.5f),
+               "panel content scales with zoom", ed->viewport.getViewedComponent()->getWidth(), W * 1.5);
 
-        ed->view.zoomBox.setSelectedId (75, juce::sendNotificationSync);
+        ed->zoomBox.setSelectedId (satkui::SatkEditor::kFitId, juce::sendNotificationSync);
+        pump (2);
+        auto* content = ed->viewport.getViewedComponent();
+        CHECK (content->getWidth() <= ed->viewport.getWidth() && content->getHeight() <= ed->viewport.getHeight()
+               && (content->getWidth() >= ed->viewport.getWidth() - 2 || content->getHeight() >= ed->viewport.getHeight() - 2),
+               "Fit shows the whole panel, filling one dimension", ed->getZoom());
+
+        const float zBefore = ed->getZoom();
+        juce::Point<int> at (200, 150);
+        ed->viewport.onCmdWheel (2.0f, at);
+        CHECK (std::abs (ed->getZoom() - juce::jmin (2.4f, zBefore * 2.0f)) < 0.01f,
+               "Cmd+wheel zooms toward the pointer", ed->getZoom(), zBefore * 2.0);
+
+        ed->zoomBox.setSelectedId (75, juce::sendNotificationSync);
         pump (2);
         CHECK (std::abs (proc.getEditorScale() - 0.75f) < 0.01f,
-               "ZOOM 75% writes persisted scale 0.75", proc.getEditorScale());
+               "ZOOM 75% writes persisted zoom 0.75", proc.getEditorScale());
 
-        // author a distinctive state: scale 1.25, extra cable, param tweak
-        ed->setScaleStep (1.25f);
+        // author a distinctive state: zoom 1.25 in a 1000x640 window, extra cable, param tweak
+        ed->setSize (1000, 640);
+        ed->setZoom (1.25f);
         const int ringIdx = proc.sys.engine.indexOf (proc.sys.ring);
         const int vcfqIdx = proc.sys.engine.indexOf (proc.sys.vcfq);
         const bool cableAdded = proc.addCable (ringIdx, satk::RING::jOut, vcfqIdx, satk::VCFQ::jAgc);
@@ -137,7 +164,9 @@ int main()
         proc2.setStateInformation (state.getData(), (int) state.getSize());
 
         CHECK (std::abs (proc2.getEditorScale() - 1.25f) < 0.01f,
-               "editor scale survives get/setStateInformation", proc2.getEditorScale());
+               "editor zoom survives get/setStateInformation", proc2.getEditorScale());
+        CHECK (proc2.getEditorW() == 1000 && proc2.getEditorH() == 640,
+               "window size survives get/setStateInformation", proc2.getEditorW(), proc2.getEditorH());
 
         auto cables2 = proc2.cableSnapshot();
         bool extraFound = false;
@@ -151,12 +180,14 @@ int main()
         CHECK (std::abs (restored - 0.777f) < 1e-4f,
                "params survive the round-trip (nto_0)", restored);
 
-        // a fresh editor on the restored processor opens at the restored scale
-        std::unique_ptr<juce::AudioProcessorEditor> ed2 (proc2.createEditor());
+        // a fresh editor on the restored processor opens at the restored zoom + size
+        std::unique_ptr<juce::AudioProcessorEditor> ed2b (proc2.createEditor());
+        auto* ed2 = dynamic_cast<satkui::SatkEditor*> (ed2b.get());
         pump (2);
-        CHECK (std::abs ((float) ed2->getWidth() / (float) W - 1.25f) < 0.01f,
-               "fresh editor opens at the restored scale",
-               (double) ed2->getWidth() / (double) W);
+        CHECK (ed2 != nullptr && std::abs (ed2->getZoom() - 1.25f) < 0.01f
+               && ed2->getWidth() == 1000 && ed2->getHeight() == 640,
+               "fresh editor opens at the restored zoom and window size",
+               ed2 ? ed2->getZoom() : 0.0, ed2 ? ed2->getWidth() : 0);
     }
 
     // ---------------------------------------------------------------- U03 --
@@ -187,7 +218,9 @@ int main()
         ed->setScaleStep (1.0f);
         pump (3);
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
-        CHECK (img.isValid() && img.getWidth() >= W - 2 && img.getHeight() >= H - 2,
+        CHECK (img.isValid() && img.getWidth() >= W - 2 && img.getHeight() >= H + satkui::HEADER_H - 2
+               && ! ed->viewport.getVerticalScrollBar().isVisible()
+               && ! ed->viewport.getHorizontalScrollBar().isVisible(),
                "createComponentSnapshot renders the full editor",
                img.getWidth(), img.getHeight());
         // not all cream: the snapshot must contain panel + header + jack pixels

@@ -1,7 +1,7 @@
 // Serge Animal TKB v2 — main panel view (two Animal rows + full-width TKB
 // strip), banana-cable interaction layer, zoom control, shared TooltipWindow,
-// and the plugin editor with aspect-locked resize (0.5x-2.4x) whose scale is
-// the SINGLE persisted source of truth (U01/U02).
+// and the plugin editor: free-shape window over a scrolling panel, independent
+// zoom (0.5x-2.4x); zoom and window size both persist (U01/U02).
 //
 // FOUNDATION SKELETON: module faces use a generic auto-layout (all jacks and
 // ctls placed on an inch grid with labels + tooltips) plus a hand-blocked TKB
@@ -295,8 +295,8 @@ inline void buildVCA (ModuleComp& c)
     c.addDiamond (0.65f, 2.20f, 0.30f);
     c.addKnob (M::cLevel, 0.65f, 3.30f, false, false, "LEVEL", ctlTip (m, M::cLevel));
     c.addToggle (M::cResponse, 0.52f, 4.52f, 2, ctlTip (m, M::cResponse));
-    c.addLabel ("LIN", 0.98f, 4.26f, 0.4f, 0.115f);
-    c.addLabel ("EXP", 0.98f, 4.66f, 0.4f, 0.115f);
+    c.addLabel ("LIN", 0.80f, 4.34f, 0.4f, 0.115f);
+    c.addLabel ("EXP", 0.80f, 4.62f, 0.4f, 0.115f);
     c.addLed (0, 0.65f, 5.44f, "VCA LED: shows the audio level leaving the VCA.", 0.09f);
     c.addLine (0.65f, 5.58f, 0.65f, 5.80f);
     c.addJack (M::jOut, 0.65f, 6.02f, "OUT", true, jackTip (m, M::jOut), 0.6f);
@@ -465,7 +465,7 @@ public:
             maxRowIn = std::max (maxRowIn, w);
         }
         logicalW = (int) std::ceil (maxRowIn * PX) + 20;
-        int y = HEADER_H + 14;
+        int y = 14; // header is pinned by the editor, outside the scrolling panel
         for (auto& row : rows)
         {
             float rowWIn = 2 * RAIL_IN;
@@ -502,33 +502,6 @@ public:
         logicalH = y;
         setSize (logicalW, logicalH);
 
-        // ---- header widgets: zoom control + clear ----
-        for (int pct : { 50, 75, 100, 125, 150, 200 })
-            zoomBox.addItem (juce::String (pct) + " %", pct);
-        zoomBox.setTextWhenNothingSelected ("ZOOM");
-        zoomBox.setTooltip ("Zoom: sets the editor to a fixed scale step (50-200%). "
-                            "Dragging the window corner resizes continuously; both write the same saved scale.");
-        // dark-header variants of the house widget style
-        zoomBox.setColour (juce::ComboBox::backgroundColourId, col::headerBg.brighter (0.08f));
-        zoomBox.setColour (juce::ComboBox::textColourId,       col::ioInk);
-        zoomBox.setColour (juce::ComboBox::outlineColourId,    col::ioInk.withAlpha (0.55f));
-        zoomBox.setColour (juce::ComboBox::arrowColourId,      col::ioInk);
-        zoomBox.onChange = [this]
-        {
-            const int id = zoomBox.getSelectedId();
-            if (id > 0 && onZoom) onZoom ((float) id / 100.0f);
-        };
-        addAndMakeVisible (zoomBox);
-        zoomBox.setBounds (logicalW - 236, 4, 112, HEADER_H - 8);
-
-        clearBtn.setButtonText ("CLEAR");
-        clearBtn.setTooltip ("Remove every patch cable from the panel (knob settings are kept).");
-        clearBtn.setColour (juce::TextButton::buttonColourId,  col::headerBg.brighter (0.08f));
-        clearBtn.setColour (juce::TextButton::textColourOffId, col::ioInk);
-        clearBtn.onClick = [this] { proc.clearAllCables(); };
-        addAndMakeVisible (clearBtn);
-        clearBtn.setBounds (logicalW - 112, 4, 92, HEADER_H - 8);
-
         for (auto* mc : mods)
             for (auto* j : mc->jacks)
                 allJacks.push_back (j);
@@ -537,29 +510,9 @@ public:
         setOpaque (true);
     }
 
-    // reflect the current scale in the zoom control (called by the editor)
-    void setZoomDisplay (float scale)
-    {
-        const int pct = juce::roundToInt (scale * 100.0f);
-        bool onStep = false;
-        for (int step : { 50, 75, 100, 125, 150, 200 })
-            if (std::abs (pct - step) <= 1) { zoomBox.setSelectedId (step, juce::dontSendNotification); onStep = true; }
-        if (! onStep)
-        {
-            zoomBox.setSelectedId (0, juce::dontSendNotification);
-            zoomBox.setTextWhenNothingSelected ("ZOOM " + juce::String (pct) + "%");
-        }
-    }
-
     void paint (juce::Graphics& g) override
     {
         g.fillAll (col::headerBg);
-        g.setColour (col::ioInk);
-        g.setFont (panelFont (15.0f, true));
-        g.drawText ("SERGE  ANIMAL  TKB", 14, 0, 500, HEADER_H, juce::Justification::centredLeft);
-        g.setColour (col::ioInk.withAlpha (0.55f));
-        g.setFont (panelFont (11.0f, false));
-        g.drawText ("RENKY DENK  -  SOFTWARE RECREATION", 220, 0, 420, HEADER_H, juce::Justification::centredLeft);
         // boat backgrounds + wood rails + row nameplates
         for (size_t i = 0; i < rowRects.size(); ++i)
         {
@@ -646,10 +599,23 @@ public:
         });
     }
 
+    // ---- drag on empty panel space pans the viewport (editor installs onPan;
+    // deltas are in SCREEN pixels so panning feels 1:1 at any zoom) ----
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        lastPanPos = e.getScreenPosition();
+        setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+    }
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        const auto p = e.getScreenPosition();
+        if (onPan) onPan (p - lastPanPos);
+        lastPanPos = p;
+    }
+    void mouseUp (const juce::MouseEvent&) override { setMouseCursor (juce::MouseCursor::NormalCursor); }
+
     int logicalW = 980, logicalH = 1200;
-    std::function<void (float)> onZoom;   // set by the editor (writes the shared scale)
-    juce::ComboBox zoomBox;               // the visible ZOOM control (U02)
-    juce::TextButton clearBtn;
+    std::function<void (juce::Point<int>)> onPan;
 
     juce::OwnedArray<ModuleComp> mods;
 
@@ -723,74 +689,190 @@ private:
     JackW* dragSrc = nullptr;
     juce::Point<float> dragPos;
     int lastCableVer = -1;
+    juce::Point<int> lastPanPos;
 };
 
 // --------------------------------------------------------------------------
-// Editor. The persisted editor scale (SatkProcessor::get/setEditorScale) is
-// the single source of truth: the ZOOM control's discrete steps and corner
-// drag-resize both funnel through resized() -> setEditorScale (U01/U02).
+// Editor: free-shape window + independent zoom (amendment 2026-11-02, LOG.md).
+//   - the WINDOW resizes to any shape (corner drag); it is a viewport onto the
+//     panel and never changes the zoom;
+//   - ZOOM (menu, or Cmd+wheel toward the pointer) scales the panel only;
+//     "Fit" picks the zoom that shows the whole panel in the current window;
+//   - wheel/trackpad scrolls, dragging empty panel space pans;
+//   - header (title, zoom, CLEAR) is pinned above the scrolling panel;
+//   - zoom (editorScale) and window size (editorW/H) persist in plugin state.
+class ZoomViewport : public juce::Viewport
+{
+public:
+    std::function<void (float factor, juce::Point<int> posInViewport)> onCmdWheel;
+    void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+    {
+        if (e.mods.isCommandDown() && onCmdWheel)
+        {
+            const float dy = w.deltaY != 0.0f ? w.deltaY : w.deltaX;
+            onCmdWheel (std::pow (2.0f, dy * 0.6f), e.getEventRelativeTo (this).getPosition());
+            return;
+        }
+        juce::Viewport::mouseWheelMove (e, w);
+    }
+};
+
 class SatkEditor : public juce::AudioProcessorEditor
 {
 public:
-    static constexpr float kMinScale = 0.5f, kMaxScale = 2.4f;
+    static constexpr float kMinScale = 0.5f, kMaxScale = 2.4f; // zoom range
+    static constexpr int   kMinW = 420, kMinH = 300;           // smallest window
+    static constexpr int   kFitId = 1;                         // zoom-menu id of "Fit"
 
     explicit SatkEditor (SatkProcessor& p) : AudioProcessorEditor (p), proc (p), view (p)
     {
-        // capture the persisted scale BEFORE installing size limits:
-        // setResizeLimits() constrains the initial 0x0 bounds up to the
-        // minimum, which fires resized() and would overwrite the restored
-        // value with kMinScale.
-        const float s = juce::jlimit (kMinScale, kMaxScale, proc.getEditorScale());
+        // capture persisted state BEFORE installing size limits (setResizeLimits
+        // fires resized() on the initial 0x0 bounds)
+        const float z0 = juce::jlimit (kMinScale, kMaxScale, proc.getEditorScale());
+        int w0 = proc.getEditorW(), h0 = proc.getEditorH();
 
-        // house style for the remaining stock JUCE widgets (menus, CLEAR,
-        // popups, tooltip window) — children inherit the editor's LookAndFeel
         setLookAndFeel (&lnf);
 
-        addAndMakeVisible (view);
+        holder.addAndMakeVisible (view);
+        viewport.setViewedComponent (&holder, false);
+        viewport.setScrollBarsShown (true, true);
+        viewport.setScrollBarThickness (10);
+        viewport.getVerticalScrollBar().setColour (juce::ScrollBar::thumbColourId, col::ioInk.withAlpha (0.45f));
+        viewport.getHorizontalScrollBar().setColour (juce::ScrollBar::thumbColourId, col::ioInk.withAlpha (0.45f));
+        viewport.onCmdWheel = [this] (float f, juce::Point<int> at) { setZoom (zoom * f, &at); };
+        addAndMakeVisible (viewport);
+        view.onPan = [this] (juce::Point<int> d) { viewport.setViewPosition (viewport.getViewPosition() - d); };
+
+        zoomBox.addItem ("Fit", kFitId);
+        zoomBox.addSeparator();
+        for (int pct : { 50, 75, 100, 125, 150, 200, 240 })
+            zoomBox.addItem (juce::String (pct) + " %", pct);
+        zoomBox.setTooltip ("Zoom: scales the panel (50-240%). Fit shows the whole panel in the window. "
+                            "Cmd+scroll zooms toward the pointer; drag the window corner to any shape.");
+        zoomBox.setColour (juce::ComboBox::backgroundColourId, col::headerBg.brighter (0.08f));
+        zoomBox.setColour (juce::ComboBox::textColourId,       col::ioInk);
+        zoomBox.setColour (juce::ComboBox::outlineColourId,    col::ioInk.withAlpha (0.55f));
+        zoomBox.setColour (juce::ComboBox::arrowColourId,      col::ioInk);
+        zoomBox.onChange = [this]
+        {
+            const int id = zoomBox.getSelectedId();
+            if (id == kFitId) zoomToFit();
+            else if (id > 0)  setZoom ((float) id / 100.0f);
+        };
+        addAndMakeVisible (zoomBox);
+
+        clearBtn.setButtonText ("CLEAR");
+        clearBtn.setTooltip ("Remove every patch cable from the panel (knob settings are kept).");
+        clearBtn.setColour (juce::TextButton::buttonColourId,  col::headerBg.brighter (0.08f));
+        clearBtn.setColour (juce::TextButton::textColourOffId, col::ioInk);
+        clearBtn.onClick = [this] { proc.clearAllCables(); };
+        addAndMakeVisible (clearBtn);
+
         tips = std::make_unique<juce::TooltipWindow> (this, 400); // shared TooltipWindow (U03)
 
-        const float aspect = (float) view.logicalW / (float) view.logicalH;
         setResizable (true, true);
-        setResizeLimits ((int) std::lround ((float) view.logicalW * kMinScale),
-                         (int) std::lround ((float) view.logicalH * kMinScale),
+        setResizeLimits (kMinW, kMinH,
                          (int) std::lround ((float) view.logicalW * kMaxScale),
-                         (int) std::lround ((float) view.logicalH * kMaxScale));
-        getConstrainer()->setFixedAspectRatio (aspect);
+                         (int) std::lround ((float) view.logicalH * kMaxScale) + HEADER_H);
 
-        view.onZoom = [this] (float f) { setScaleStep (f); };
-
-        setSize ((int) std::lround ((float) view.logicalW * s),
-                 (int) std::lround ((float) view.logicalH * s));
+        applyZoom (z0);
+        if (w0 <= 0 || h0 <= 0) // first open: whole panel at the saved zoom, clipped to the screen
+        {
+            w0 = holder.getWidth();
+            h0 = holder.getHeight() + HEADER_H;
+            if (auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+            {
+                w0 = juce::jmin (w0, (int) ((float) d->userArea.getWidth()  * 0.92f));
+                h0 = juce::jmin (h0, (int) ((float) d->userArea.getHeight() * 0.88f));
+            }
+        }
+        setSize (juce::jmax (kMinW, w0), juce::jmax (kMinH, h0));
     }
 
     ~SatkEditor() override { setLookAndFeel (nullptr); }
 
-    // discrete zoom entry point (also used by the UX tests)
+    // ---- zoom (panel scale; window untouched) ------------------------------
+    // keeps the panel point under `anchor` (viewport coords; centre if null) fixed
+    void setZoom (float z, const juce::Point<int>* anchor = nullptr)
+    {
+        z = juce::jlimit (kMinScale, kMaxScale, z);
+        const auto a = anchor != nullptr ? *anchor
+                                         : juce::Point<int> (viewport.getWidth() / 2, viewport.getHeight() / 2);
+        const auto panelPt = (viewport.getViewPosition() + a).toFloat() / zoom;
+        applyZoom (z);
+        viewport.setViewPosition ((panelPt * zoom).roundToInt() - a);
+    }
+    void zoomToFit()
+    {
+        setZoom (juce::jmin ((float) viewport.getWidth()  / (float) view.logicalW,
+                             (float) viewport.getHeight() / (float) view.logicalH));
+        viewport.setViewPosition (0, 0);
+    }
+    float getZoom() const noexcept { return zoom; }
+
+    // legacy entry point (tests/tools): zoom AND size the window to show the
+    // whole panel at that zoom
     void setScaleStep (float f)
     {
-        f = juce::jlimit (kMinScale, kMaxScale, f);
-        setSize ((int) std::lround ((float) view.logicalW * f),
-                 (int) std::lround ((float) view.logicalH * f));
+        applyZoom (juce::jlimit (kMinScale, kMaxScale, f));
+        setSize (holder.getWidth(), holder.getHeight() + HEADER_H);
+        viewport.setViewPosition (0, 0);
     }
 
     void resized() override
     {
-        const float s = juce::jmin ((float) getWidth() / (float) view.logicalW,
-                                    (float) getHeight() / (float) view.logicalH);
-        view.setTransform (juce::AffineTransform::scale (s));
-        view.setTopLeftPosition (0, 0);
-        proc.setEditorScale (s);        // drag-resize and zoom share this value
-        view.setZoomDisplay (s);
+        auto r = getLocalBounds();
+        auto header = r.removeFromTop (HEADER_H);
+        clearBtn.setBounds (header.removeFromRight (104).reduced (6, 4));
+        zoomBox.setBounds (header.removeFromRight (124).reduced (6, 4));
+        viewport.setBounds (r);
+        proc.setEditorSize (getWidth(), getHeight()); // window size persists, zoom unchanged
     }
-    void paint (juce::Graphics& g) override { g.fillAll (satkui::col::headerBg); }
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (col::headerBg);
+        g.setColour (col::ioInk);
+        g.setFont (panelFont (15.0f, true));
+        g.drawText ("SERGE  ANIMAL  TKB", 14, 0, 200, HEADER_H, juce::Justification::centredLeft);
+        if (getWidth() > 640)
+        {
+            g.setColour (col::ioInk.withAlpha (0.55f));
+            g.setFont (panelFont (11.0f, false));
+            g.drawText ("RENKY DENK  -  SOFTWARE RECREATION", 220, 0, juce::jmax (0, getWidth() - 480),
+                        HEADER_H, juce::Justification::centredLeft);
+        }
+    }
 
     juce::TooltipWindow* tooltipWindow() const { return tips.get(); }
 
     SatkProcessor& proc;
     PanelView view;
+    ZoomViewport viewport;
+    juce::ComboBox zoomBox;   // the visible ZOOM control (U02)
+    juce::TextButton clearBtn;
 
 private:
+    void applyZoom (float z)
+    {
+        zoom = z;
+        holder.setSize ((int) std::ceil ((float) view.logicalW * z), (int) std::ceil ((float) view.logicalH * z));
+        view.setTransform (juce::AffineTransform::scale (z));
+        view.setTopLeftPosition (0, 0);
+        proc.setEditorScale (z);
+        updateZoomDisplay();
+    }
+    void updateZoomDisplay()
+    {
+        const int pct = juce::roundToInt (zoom * 100.0f);
+        for (int step : { 50, 75, 100, 125, 150, 200, 240 })
+            if (std::abs (pct - step) <= 1) { zoomBox.setSelectedId (step, juce::dontSendNotification); return; }
+        zoomBox.setSelectedId (0, juce::dontSendNotification);
+        zoomBox.setTextWhenNothingSelected ("ZOOM " + juce::String (pct) + "%");
+    }
+
     SatkLookAndFeel lnf;
+    juce::Component holder;   // sized logical*zoom; hosts the transformed panel
+    float zoom = 1.0f;
     std::unique_ptr<juce::TooltipWindow> tips;
 };
 
