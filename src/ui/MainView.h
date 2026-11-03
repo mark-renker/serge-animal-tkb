@@ -1,7 +1,7 @@
 // Serge Animal TKB v2 — main panel view (two Animal rows + full-width TKB
 // strip), banana-cable interaction layer, zoom control, shared TooltipWindow,
-// and the plugin editor: proportional window whose corner drag zooms the panel
-// (0.5x-2.4x); the zoom persists (U01/U02).
+// and the plugin editor: corner drag zooms the panel (0.5x-2.4x); past screen
+// size the window stops growing and the panel scrolls; the zoom persists (U01/U02).
 //
 // FOUNDATION SKELETON: module faces use a generic auto-layout (all jacks and
 // ctls placed on an inch grid with labels + tooltips) plus a hand-blocked TKB
@@ -745,33 +745,45 @@ private:
 };
 
 // --------------------------------------------------------------------------
-// Editor: proportional window (amendment 2026-11-03, LOG.md — supersedes the
-// free-shape viewport of 2026-11-02 at Mark's request: dragging the corner
-// should zoom, never leave blank space).
-//   - corner drag scales the whole panel; the window keeps the panel's
-//     proportions (height = panel height x zoom + the fixed header);
-//   - the ZOOM menu sets the window to a preset scale (50-240 %);
-//   - zoom (editorScale) persists in plugin state; the window size follows.
+// Editor: proportional zoom with a screen-size cap (amendment 2026-11-03b).
+//   - corner drag sets the ZOOM. Below the cap the window is exactly the panel
+//     at that zoom (no blank space);
+//   - the window never exceeds the cap (~95 % x 92 % of the screen it's on).
+//     Zooming past the cap keeps the window at the cap and the panel scrolls
+//     (scrollbars / wheel / trackpad);
+//   - the ZOOM menu (50-240 %) follows the same rule; zoom persists in state.
 class PanelConstrainer : public juce::ComponentBoundsConstrainer
 {
 public:
     int logicalW = 1, logicalH = 1, headerH = 0;
     float minZ = 0.5f, maxZ = 2.4f;
-    int heightFor (int w) const { return (int) std::lround ((float) w * (float) logicalH / (float) logicalW) + headerH; }
+    std::function<juce::Point<int>()> cap;       // max window size (screen-derived)
+    std::function<void (float)> onDragZoom;     // zoom requested by a drag
+
+    // window size for a zoom: the panel at that zoom, clamped to the cap
+    juce::Point<int> windowFor (float z) const
+    {
+        const auto c = cap ? cap() : juce::Point<int> (1 << 20, 1 << 20);
+        const int w = (int) std::lround ((float) logicalW * z);
+        const int h = (int) std::lround ((float) logicalH * z) + headerH;
+        return { juce::jmin (w, c.x), juce::jmin (h, c.y) };
+    }
     void checkBounds (juce::Rectangle<int>& bounds, const juce::Rectangle<int>& previous,
                       const juce::Rectangle<int>& /*limits*/, bool isStretchingTop, bool isStretchingLeft,
                       bool isStretchingBottom, bool isStretchingRight) override
     {
-        // width drives the zoom; a purely vertical drag converts to a width
+        // the drag position asks for a zoom (width-driven; a vertical-only drag uses height)
         const bool vertOnly = (isStretchingTop || isStretchingBottom) && ! (isStretchingLeft || isStretchingRight);
-        int w = vertOnly ? (int) std::lround ((float) (bounds.getHeight() - headerH) * (float) logicalW / (float) logicalH)
-                         : bounds.getWidth();
-        w = juce::jlimit ((int) std::lround ((float) logicalW * minZ), (int) std::lround ((float) logicalW * maxZ), w);
-        const int h = heightFor (w);
-        // keep the edge opposite the one being dragged fixed
-        const int x = isStretchingLeft ? previous.getRight() - w : bounds.getX();
-        const int y = isStretchingTop  ? previous.getBottom() - h : bounds.getY();
-        bounds = { x, y, w, h };
+        float z = vertOnly ? (float) (bounds.getHeight() - headerH) / (float) logicalH
+                           : (float) bounds.getWidth() / (float) logicalW;
+        // (past the cap the window stops growing but the drag keeps asking for
+        // more width, so the zoom keeps rising and the panel scrolls)
+        z = juce::jlimit (minZ, maxZ, z);
+        if (onDragZoom) onDragZoom (z);
+        const auto wh = windowFor (z);
+        const int x = isStretchingLeft ? previous.getRight() - wh.x : bounds.getX();
+        const int y = isStretchingTop  ? previous.getBottom() - wh.y : bounds.getY();
+        bounds = { x, y, wh.x, wh.y };
     }
 };
 
@@ -782,20 +794,21 @@ public:
 
     explicit SatkEditor (SatkProcessor& p) : AudioProcessorEditor (p), proc (p), view (p)
     {
-        // capture the persisted zoom BEFORE installing the constrainer (setting
-        // limits fires resized() on the initial 0x0 bounds)
-        float z0 = juce::jlimit (kMinScale, kMaxScale, proc.getEditorScale());
-        if (auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) // never open taller than the screen
-            z0 = juce::jmax (kMinScale, juce::jmin (z0, ((float) d->userArea.getHeight() * 0.92f - (float) HEADER_H)
-                                                         / (float) view.logicalH));
+        const float z0 = juce::jlimit (kMinScale, kMaxScale, proc.getEditorScale());
 
         setLookAndFeel (&lnf);
-        addAndMakeVisible (view);
+        holder.addAndMakeVisible (view);
+        viewport.setViewedComponent (&holder, false);
+        viewport.setScrollBarsShown (true, true);
+        viewport.setScrollBarThickness (11);
+        viewport.getVerticalScrollBar().setColour (juce::ScrollBar::thumbColourId, col::ioInk.withAlpha (0.55f));
+        viewport.getHorizontalScrollBar().setColour (juce::ScrollBar::thumbColourId, col::ioInk.withAlpha (0.55f));
+        addAndMakeVisible (viewport);
 
         for (int pct : { 50, 75, 100, 125, 150, 200, 240 })
             zoomBox.addItem ("ZOOM  " + juce::String (pct) + " %", pct);
-        zoomBox.setTooltip ("Zoom: sets the window to a preset scale (50-240%). "
-                            "Dragging the window corner zooms continuously.");
+        zoomBox.setTooltip ("Zoom: preset panel scale (50-240%). Dragging the window corner zooms continuously; "
+                            "past screen size the window stops growing and the panel scrolls.");
         zoomBox.setColour (juce::ComboBox::backgroundColourId, col::headerBg.brighter (0.08f));
         zoomBox.setColour (juce::ComboBox::textColourId,       col::ioInk);
         zoomBox.setColour (juce::ComboBox::outlineColourId,    col::ioInk.withAlpha (0.55f));
@@ -820,10 +833,8 @@ public:
         constrainer.logicalH = view.logicalH;
         constrainer.headerH  = HEADER_H;
         constrainer.minZ = kMinScale; constrainer.maxZ = kMaxScale;
-        constrainer.setSizeLimits ((int) std::lround ((float) view.logicalW * kMinScale),
-                                   constrainer.heightFor ((int) std::lround ((float) view.logicalW * kMinScale)),
-                                   (int) std::lround ((float) view.logicalW * kMaxScale),
-                                   constrainer.heightFor ((int) std::lround ((float) view.logicalW * kMaxScale)));
+        constrainer.cap = [this] { return windowCap(); };
+        constrainer.onDragZoom = [this] (float z) { applyZoom (z); };
         setConstrainer (&constrainer);
         setResizable (true, true);
 
@@ -832,11 +843,22 @@ public:
 
     ~SatkEditor() override { setLookAndFeel (nullptr); }
 
-    // zoom step: size the window to the panel at scale f
+    // largest window allowed: ~95 % x 92 % of the screen the editor is on
+    juce::Point<int> windowCap() const
+    {
+        auto& displays = juce::Desktop::getInstance().getDisplays();
+        const juce::Displays::Display* d = isShowing() ? displays.getDisplayForRect (getScreenBounds())
+                                                       : displays.getPrimaryDisplay();
+        if (d == nullptr) return { 1 << 20, 1 << 20 };
+        return { (int) ((float) d->userArea.getWidth() * 0.95f), (int) ((float) d->userArea.getHeight() * 0.92f) };
+    }
+
+    // zoom step (menu / tests / tools): set the zoom and fit the window to it (capped)
     void setScaleStep (float f)
     {
-        const int w = (int) std::lround ((float) view.logicalW * juce::jlimit (kMinScale, kMaxScale, f));
-        setSize (w, constrainer.heightFor (w));
+        applyZoom (juce::jlimit (kMinScale, kMaxScale, f));
+        const auto wh = constrainer.windowFor (zoom);
+        setSize (wh.x, wh.y);
     }
     float getZoom() const noexcept { return zoom; }
 
@@ -846,12 +868,15 @@ public:
         auto header = r.removeFromTop (HEADER_H);
         clearBtn.setBounds (header.removeFromRight (104).reduced (6, 4));
         zoomBox.setBounds (header.removeFromRight (150).reduced (6, 4));
-        zoom = juce::jmin ((float) r.getWidth() / (float) view.logicalW,
-                           (float) r.getHeight() / (float) view.logicalH);
-        view.setTransform (juce::AffineTransform::scale (zoom).translated (0.0f, (float) HEADER_H));
-        view.setTopLeftPosition (0, 0);
-        proc.setEditorScale (zoom);   // corner drag and zoom menu share this value
-        updateZoomDisplay();
+        viewport.setBounds (r);
+        // a resize that didn't come through a drag or a zoom step (host/OS):
+        // below the cap the window IS the panel at its zoom, so follow it
+        const auto c = windowCap();
+        if (getWidth() < c.x - 1 && getHeight() < c.y - 1)
+        {
+            const float z = juce::jlimit (kMinScale, kMaxScale, (float) r.getWidth() / (float) view.logicalW);
+            if (std::abs (z - zoom) > 0.002f) applyZoom (z);
+        }
     }
     void paint (juce::Graphics& g) override
     {
@@ -872,11 +897,21 @@ public:
 
     SatkProcessor& proc;
     PanelView view;
+    juce::Viewport viewport;
     juce::ComboBox zoomBox;   // the visible ZOOM control (U02)
     juce::TextButton clearBtn;
     PanelConstrainer constrainer;
 
 private:
+    void applyZoom (float z)
+    {
+        zoom = z;
+        holder.setSize ((int) std::lround ((float) view.logicalW * z), (int) std::lround ((float) view.logicalH * z));
+        view.setTransform (juce::AffineTransform::scale (z));
+        view.setTopLeftPosition (0, 0);
+        proc.setEditorScale (z);   // corner drag and zoom menu share this value
+        updateZoomDisplay();
+    }
     void updateZoomDisplay()
     {
         const int pct = juce::roundToInt (zoom * 100.0f);
@@ -887,6 +922,7 @@ private:
     }
 
     SatkLookAndFeel lnf;
+    juce::Component holder;   // panel at zoom size; scrolls inside the viewport
     float zoom = 1.0f;
     std::unique_ptr<juce::TooltipWindow> tips;
 };

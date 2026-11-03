@@ -367,3 +367,13 @@ grouped/dividered I/O strip.
   design, so the stimulus keeps each source moving (TKB clock ~7 Hz so the
   100 ms GATE actually toggles). Monitor OFF + no cables → exact 0.0.
 - Gauntlet 200/200.
+
+## 2026-11-03b — UI amendment: zoom with screen cap + scrolling
+
+Mark: keep corner-drag zoom, but once the window reaches a size limit it should
+stop growing and the panel should scroll. Below the cap (95 % × 92 % of the
+screen the editor is on) the window is exactly the panel at the zoom; past it
+the window stays capped, the drag keeps raising the zoom, and the panel
+scrolls (scrollbars / wheel / trackpad). ZOOM menu presets obey the same cap.
+The opening zoom is no longer clamped to the screen (scrolling covers it).
+U01 rewritten (UX 24/24).

@@ -1,9 +1,10 @@
 // Serge Animal TKB v2 — G2u UX suite (satk_uxtests). JUCE-linked, headless.
 // Requires a logged-in GUI session and JUCE_MODAL_LOOPS_PERMITTED=1
 // (documented constraint, GAUNTLET rev B).
-//   U01 — proportional window (amendment 2026-11-03): corner drag zooms the
-//         panel; height always = panel x zoom + header (no blank space);
-//         range 0.5x-2.4x; the persisted value IS the actual zoom.
+//   U01 — corner drag zooms (amendment 2026-11-03b): below the screen cap the
+//         window is exactly the panel at that zoom (no blank space); past the
+//         cap the window stays capped and the panel scrolls; range 0.5x-2.4x;
+//         the persisted value IS the actual zoom.
 //   U02 — the visible ZOOM control sets preset scales through that same
 //         persisted zoom; zoom + cables + params survive a full plugin state
 //         round-trip and a fresh editor opens at the restored zoom.
@@ -83,33 +84,44 @@ int main()
     std::printf ("editor logical size: %dx%d\n", W, H);
 
     // ---------------------------------------------------------------- U01 --
-    GROUP ("U01 proportional window: corner drag zooms, no blank space");
+    GROUP ("U01 corner-drag zoom, screen cap, scroll past the cap");
     {
         auto* con = dynamic_cast<satkui::PanelConstrainer*> (ed->getConstrainer());
-        CHECK (con != nullptr, "editor uses the proportional panel constrainer");
+        CHECK (con != nullptr, "editor uses the panel zoom constrainer");
         const int HH = satkui::HEADER_H;
-        CHECK (con->getMinimumWidth() <= (int) std::lround (W * 0.5) + 1
-               && con->getMaximumWidth() >= (int) std::lround (W * 2.4) - 1,
-               "resize range covers 0.5x-2.4x panel width", con->getMinimumWidth(), con->getMaximumWidth());
-
-        // simulate corner drags (bottom-right) through the constrainer, incl. off-ratio requests
-        bool propOk = true, zoomTracks = true;
-        for (auto wh : { juce::Point<int> (1400, 500), juce::Point<int> (500, 1400),
-                         juce::Point<int> (W, H + HH), juce::Point<int> (3000, 3000), juce::Point<int> (100, 100) })
+        const auto cap = ed->windowCap();
+        std::printf ("  window cap: %dx%d\n", cap.x, cap.y);
+        auto drag = [&] (int w, int h)
         {
-            juce::Rectangle<int> b (0, 0, wh.x, wh.y);
+            juce::Rectangle<int> b (0, 0, w, h);
             con->checkBounds (b, ed->getBounds(), {}, false, false, true, true);
             ed->setSize (b.getWidth(), b.getHeight());
-            const float z = (float) ed->getWidth() / (float) W;
-            if (std::abs (ed->getHeight() - ((int) std::lround ((float) H * z) + HH)) > 1) propOk = false;
-            if (std::abs (proc.getEditorScale() - z) > 0.01f || std::abs (ed->getZoom() - z) > 0.01f) zoomTracks = false;
-        }
-        CHECK (propOk, "window keeps panel proportions (height = panel x zoom + header)", ed->getWidth(), ed->getHeight());
-        CHECK (zoomTracks, "corner drag writes the persisted zoom", proc.getEditorScale());
+            pump (1);
+        };
+        // below the cap: window == panel x zoom
+        const float zSmall = juce::jmin (0.6f, ((float) cap.y - (float) HH) / (float) H * 0.9f);
+        drag ((int) std::lround ((float) W * zSmall), 10);
+        CHECK (std::abs (ed->getZoom() - zSmall) < 0.01f
+               && ed->getHeight() == (int) std::lround ((float) H * ed->getZoom()) + HH
+               && ! ed->viewport.getVerticalScrollBar().isVisible(),
+               "below the cap: window is the panel at the zoom (no blank space, no scroll)",
+               ed->getZoom(), zSmall);
+        CHECK (std::abs (proc.getEditorScale() - ed->getZoom()) < 1e-4f, "corner drag writes the persisted zoom",
+               proc.getEditorScale());
 
-        juce::Rectangle<int> v (0, 0, ed->getWidth(), ed->getHeight() + 400); // vertical-only drag
-        con->checkBounds (v, ed->getBounds(), {}, false, false, true, false);
-        CHECK (v.getWidth() > ed->getWidth(), "vertical-only drag also zooms (width follows)", v.getWidth(), ed->getWidth());
+        // drag far past the cap: zoom keeps rising, window stays capped, panel scrolls
+        drag (W * 2, H * 2);
+        CHECK (ed->getWidth() <= cap.x && ed->getHeight() <= cap.y,
+               "past the cap: window never exceeds the screen cap", ed->getWidth(), ed->getHeight());
+        CHECK (ed->getZoom() > ((float) cap.y - (float) HH) / (float) H + 0.05f
+               && ed->viewport.getVerticalScrollBar().isVisible(),
+               "past the cap: zoom keeps rising and the panel scrolls", ed->getZoom());
+
+        // and back down: scrollbars go away, window follows the zoom again
+        drag ((int) std::lround ((float) W * zSmall), 10);
+        CHECK (! ed->viewport.getVerticalScrollBar().isVisible()
+               && std::abs (ed->getZoom() - zSmall) < 0.01f,
+               "shrinking below the cap restores proportional window", ed->getZoom());
     }
 
     // ---------------------------------------------------------------- U02 --
@@ -119,8 +131,11 @@ int main()
         pump (2);
         CHECK (std::abs (proc.getEditorScale() - 1.5f) < 0.01f,
                "ZOOM 150% writes persisted zoom 1.5", proc.getEditorScale());
-        CHECK (ed->getWidth() == (int) std::lround ((float) W * 1.5f),
-               "editor window follows the zoom step", ed->getWidth(), (double) W * 1.5);
+        {
+            const auto wh = ed->constrainer.windowFor (1.5f);
+            CHECK (ed->getWidth() == wh.x && ed->getHeight() == wh.y,
+                   "editor window follows the zoom step (capped to the screen)", ed->getWidth(), wh.x);
+        }
 
         ed->zoomBox.setSelectedId (75, juce::sendNotificationSync);
         pump (2);
@@ -163,13 +178,8 @@ int main()
         std::unique_ptr<juce::AudioProcessorEditor> ed2b (proc2.createEditor());
         auto* ed2 = dynamic_cast<satkui::SatkEditor*> (ed2b.get());
         pump (2);
-        // (the editor caps its opening zoom to the screen height; compare to that cap)
-        float expect = 1.25f;
-        if (auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
-            expect = juce::jmin (expect, ((float) d->userArea.getHeight() * 0.92f - (float) satkui::HEADER_H) / (float) H);
-        CHECK (ed2 != nullptr && std::abs (ed2->getZoom() - expect) < 0.01f,
-               "fresh editor opens at the restored zoom (screen-capped)",
-               ed2 ? ed2->getZoom() : 0.0, expect);
+        CHECK (ed2 != nullptr && std::abs (ed2->getZoom() - 1.25f) < 0.01f,
+               "fresh editor opens at the restored zoom", ed2 ? ed2->getZoom() : 0.0, 1.25);
     }
 
     // ---------------------------------------------------------------- U03 --
