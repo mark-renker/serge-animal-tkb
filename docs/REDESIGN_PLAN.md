@@ -9,7 +9,8 @@ v1 is a 350-line Faust program (`gen_dsp.py` → `SergeAnimalTKB.dsp`) built wit
 `faust2juce`: sonically a naive behavioral model, and its UI is an
 auto-generated tab-and-slider wall where "patching" means picking sources from
 31 dropdown menus. v2 rebuilds the same instrument — same module complement,
-same plugin identity (`aumu Satk Rnky`, "Serge Animal TKB") — as a hand-written
+its own plugin identity (`aumu Sat2 Rnky`, "Serge Animal TKB v2", amended
+2026-11-03 so v1 stays installed alongside) — as a hand-written
 C++17/JUCE 8 plugin on the Paperface 50 framework, with real banana-cable
 patching, the PF50 cream-panel look, and circuit-informed DSP.
 

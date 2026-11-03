@@ -45,13 +45,14 @@ function(satk_common target)
     juce::juce_recommended_warning_flags)
 endfunction()
 
-# ---- Instrument (identity preserved from v1: aumu / Satk / Rnky) ------------
+# ---- Instrument (own identity, coexists with v1: aumu / Sat2 / Rnky) --------
+# Amended 2026-11-03 (Mark): v1 keeps aumu Satk Rnky; see gauntlet/LOG.md.
 juce_add_plugin(SergeAnimalTKB
-  PRODUCT_NAME "Serge Animal TKB"
+  PRODUCT_NAME "Serge Animal TKB v2"
   COMPANY_NAME "Renky Denk"
-  BUNDLE_ID com.renkydenk.SergeAnimalTKB
+  BUNDLE_ID com.renkydenk.SergeAnimalTKB2
   PLUGIN_MANUFACTURER_CODE Rnky
-  PLUGIN_CODE Satk
+  PLUGIN_CODE Sat2
   FORMATS ${SATK_FORMATS}
   IS_SYNTH TRUE
   NEEDS_MIDI_INPUT TRUE

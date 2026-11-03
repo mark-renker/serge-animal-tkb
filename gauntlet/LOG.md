@@ -388,3 +388,17 @@ U01 rewritten (UX 24/24).
 - Now rms 0.0704 / peak 0.594. RMS matches v1; peak stays above v1's 0.37
   because v2's voice has a higher crest factor — not matchable with one gain.
 - Gauntlet 200/200, UX 23/23.
+
+## 2026-11-03 — Amendment (Mark): v2 gets its own plugin identity
+
+- Goal 3 "identity preserved" and gate G3 amended. v1 and v2 shared the AU
+  type/subtype/manufacturer (`aumu Satk Rnky`), the display name
+  ("Renky Denk: Serge Animal TKB"), the bundle ID, and (derived from the codes)
+  the VST3 class ID, so installing v2 would have replaced v1 in every host.
+- v2 is now `aumu Sat2 Rnky`, PRODUCT_NAME "Serge Animal TKB v2", bundle
+  `com.renkydenk.SergeAnimalTKB2`. Manufacturer stays `Rnky` (both appear under
+  Renky Denk). G3 is now `auval -v aumu Sat2 Rnky`. Updated: CMakeLists.txt,
+  GAUNTLET.md (goal 3 + G3), SPEC.md §7, REDESIGN_PLAN.md §1.
+- Side effects: bundle filenames become "Serge Animal TKB v2.{component,vst3,app}";
+  the standalone's settings file becomes "Serge Animal TKB v2.settings".
+  The REDESIGN_PLAN phase-0 / risk notes about the collision are now historical.

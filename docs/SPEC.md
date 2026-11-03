@@ -385,10 +385,10 @@ removing cable 1 ⇒ exact 0.0; velocity scales the final mix; monitor auditions
 
 ## 7. Plugin contract
 
-- **Identity**: AU `aumu` / subtype `Satk` / manufacturer `Rnky`; name "Serge Animal TKB";
-  company "Renky Denk"; bundle `com.renkydenk.SergeAnimalTKB`; version 2.0.0; AU + VST3 +
-  Standalone; arm64; `IS_SYNTH`, MIDI in. v1 sessions keep loading at this identity
-  (parameter/state compatibility is declared broken — v2.0.0).
+- **Identity** (amended 2026-11-03): AU `aumu` / subtype `Sat2` / manufacturer `Rnky`;
+  name "Serge Animal TKB v2"; company "Renky Denk"; bundle `com.renkydenk.SergeAnimalTKB2`;
+  version 2.0.0; AU + VST3 + Standalone; arm64; `IS_SYNTH`, MIDI in. v1 keeps
+  `aumu Satk Rnky` and stays installed alongside; v1 sessions keep opening v1.
 - **Parameters**: one APVTS param per ctl, in module/ctl declaration order.
   ID = `{moduleId}_{ctlIndex}` (append-only). Name = human `{MODULEID} {CTL NAME}` (e.g.
   "NTO FREQ", "TKB PAD 3"). Continuous → `AudioParameterFloat` 0..1; stepped →

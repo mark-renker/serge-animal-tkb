@@ -22,8 +22,10 @@ C++/JUCE plugin on the Paperface 50 framework (`~/dev/paperface50-emulation`):
    modeling per `gauntlet/research/dsp-techniques.md`, with hardware behavior
    targets from `gauntlet/research/hardware-spec.md`. Accuracy tier per module
    is implementation freedom; the gates below are the contract.
-3. **Identity preserved**: AU `aumu` / subtype `Satk` / manufacturer `Rnky`,
-   name "Serge Animal TKB", bundle `com.renkydenk.SergeAnimalTKB`, AU + VST3 +
+3. **Own identity, coexisting with v1** (amended 2026-11-03 by Mark; was
+   "identity preserved" at `Satk`): AU `aumu` / subtype `Sat2` / manufacturer
+   `Rnky`, name "Serge Animal TKB v2", bundle `com.renkydenk.SergeAnimalTKB2`,
+   so v1 (`aumu Satk Rnky`) stays installed alongside. AU + VST3 +
    Standalone, arm64 required. v1's module complement is kept (NTO, DUSG×2,
    SSG, VCFQ, VCM, RING, Noise, RVG, TKB, KEY/MIDI, VCA×2, output mixer with
    **monitor bus**) — each modeled on its closest real circuit.
@@ -159,7 +161,7 @@ involved) before the first v2 install**, stored in `gauntlet/renders/v1/`.
     (executable part); tooltip *quality* (does it describe the function?) is
     judged by the UI critic; a shared TooltipWindow is installed.
   - U04: `satk_snapshot` renders the full editor to PNG headlessly.
-- **G3 auval** — `auval -v aumu Satk Rnky` exits PASS.
+- **G3 auval** — `auval -v aumu Sat2 Rnky` exits PASS (amended 2026-11-03; was `Satk`).
 - **G4 pluginval** — pluginval **1.0.4** (`/Applications/pluginval.app`),
   `--strictness-level 10`, run on **both** the VST3 and the AU: 0 failures.
 - **G5 install** — fresh `.component` + `.vst3` in
