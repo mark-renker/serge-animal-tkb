@@ -187,11 +187,12 @@ public:
         const float v01 = names.size() > 1 ? (float) idx / (float) (names.size() - 1) : 0.0f;
         drawKnob (g, knob, v01, false);
         auto ro = b.reduced (b.getHeight() * 0.10f, b.getHeight() * 0.22f).withTrimmedLeft (b.getHeight() * 0.12f);
-        g.setColour (col::ioBg);
-        g.fillRoundedRectangle (ro, 2.5f);
-        g.setColour (col::ink.withAlpha (0.7f));
-        g.drawRoundedRectangle (ro, 2.5f, 1.0f);
-        g.setColour (col::ioInk);
+        // engraved readout window on the cream panel (not a software pill)
+        g.setColour (col::creamShade);
+        g.fillRect (ro);
+        g.setColour (col::ink.withAlpha (0.8f));
+        g.drawRect (ro, 1.1f);
+        g.setColour (col::ink);
         g.setFont (panelFont (ro.getHeight() * 0.62f, true));
         g.drawFittedText (names[idx], ro.reduced (4.0f, 0.0f).getSmallestIntegerContainer(),
                           juce::Justification::centred, 1, 0.7f);

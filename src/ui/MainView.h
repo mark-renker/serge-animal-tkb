@@ -123,7 +123,7 @@ inline void buildVCM (ModuleComp& c)
     c.addToggle (M::cTopMode, 0.85f, 2.06f, 2, ctlTip (m, M::cTopMode));
     c.addLabel ("LO", 1.10f, 1.80f, 0.35f, 0.14f);
     c.addLabel ("HI", 1.10f, 2.16f, 0.35f, 0.14f);
-    c.addKnob (M::cTopDrive, 2.05f, 1.96f, false, false, "DRIVE", ctlTip (m, M::cTopDrive));
+    c.addKnob (M::cTopDrive, 2.05f, 1.86f, false, false, "DRIVE", ctlTip (m, M::cTopDrive));
     // MIDDLE section (the classic folder)
     c.addBox (0.14f, 2.66f, 2.72f, 2.24f);
     c.addLabel ("MIDDLE", 1.50f, 2.725f, 1.0f, 0.14f);
@@ -155,12 +155,10 @@ inline void buildRING (ModuleComp& c)
     c.addLabel ("INPUTS", 0.85f, 0.72f, 1.0f, 0.14f);
     c.addJack (M::jX, 0.50f, 1.22f, "X IN", true, jackTip (m, M::jX), 0.62f);
     c.addJack (M::jY, 1.20f, 1.22f, "Y IN", true, jackTip (m, M::jY), 0.62f);
-    c.addBox (0.14f, 1.96f, 1.42f, 1.30f);
-    c.addLabel ("MORPH", 0.85f, 2.02f, 1.0f, 0.14f);
-    c.addDiamondJack (M::jVcMorph, 0.50f, 2.62f, "VC", jackTip (m, M::jVcMorph));
-    c.addKnob (M::cMorph, 1.20f, 2.62f, false, false, {}, ctlTip (m, M::cMorph));
-    c.addBox (0.14f, 3.40f, 1.42f, 1.20f);
-    c.addKnob (M::cGain, 0.85f, 4.00f, false, false, "GAIN", ctlTip (m, M::cGain));
+    c.addBox (0.14f, 1.96f, 1.42f, 2.64f);
+    c.addDiamondJack (M::jVcMorph, 0.50f, 2.44f, "VC", jackTip (m, M::jVcMorph));
+    c.addKnob (M::cMorph, 1.20f, 2.40f, false, false, "MORPH", ctlTip (m, M::cMorph));
+    c.addKnob (M::cGain, 0.85f, 3.86f, false, false, "GAIN", ctlTip (m, M::cGain));
     // bleed trims (a boxed "feature" pair, per the R*S rejection-trim note)
     c.addBox (0.14f, 4.74f, 1.42f, 1.18f);
     c.addLabel ("BLEED", 0.85f, 4.80f, 0.8f, 0.14f);
@@ -192,11 +190,9 @@ inline void buildVCFQ (ModuleComp& c)
     // CV row: VC Q jack -> attenuverter | 1V/OCT | attenuverter <- VC F jack
     c.addJack (M::jVcQ, 0.38f, 4.80f, "VC Q", true, jackTip (m, M::jVcQ), 0.62f);
     c.addLine (0.56f, 4.80f, 0.68f, 4.80f);
-    c.addKnob (M::cVcQAmt, 0.94f, 4.80f, false, false, {}, ctlTip (m, M::cVcQAmt));
-    c.addLabel (juce::CharPointer_UTF8 ("\xc2\xb1"), 0.94f, 5.10f, 0.3f, 0.15f); // attenuverter
+    c.addKnob (M::cVcQAmt, 0.94f, 4.80f, false, false, "Q AMT", ctlTip (m, M::cVcQAmt));
     c.addJack (M::jOct, 1.45f, 4.80f, "1V/OCT", true, jackTip (m, M::jOct), 0.62f);
-    c.addKnob (M::cVcFAmt, 1.96f, 4.80f, false, false, {}, ctlTip (m, M::cVcFAmt));
-    c.addLabel (juce::CharPointer_UTF8 ("\xc2\xb1"), 1.96f, 5.10f, 0.3f, 0.15f);
+    c.addKnob (M::cVcFAmt, 1.96f, 4.80f, false, false, "F AMT", ctlTip (m, M::cVcFAmt));
     c.addLine (2.22f, 4.80f, 2.34f, 4.80f);
     c.addJack (M::jVcF, 2.52f, 4.80f, "VC F", true, jackTip (m, M::jVcF), 0.62f);
     // big Q / FREQ
@@ -374,8 +370,9 @@ inline void buildOUT (ModuleComp& c)
     // monitor bus
     c.addBox (0.14f, 3.20f, 2.42f, 1.96f);
     c.addLabel ("MONITOR", 1.35f, 3.26f, 1.1f, 0.14f);
-    c.addSelector (M::cMonSrc, 1.35f, 3.80f, 2.15f, ctlTip (m, M::cMonSrc));
-    c.addKnob (M::cMonLvl, 1.35f, 4.50f, false, false, "LEVEL", ctlTip (m, M::cMonLvl));
+    c.addSelector (M::cMonSrc, 1.35f, 3.78f, 2.15f, ctlTip (m, M::cMonSrc));
+    c.addLabel ("SOURCE", 0.56f, 4.14f, 0.7f, 0.14f);
+    c.addKnob (M::cMonLvl, 1.70f, 4.60f, false, false, "LEVEL", ctlTip (m, M::cMonLvl));
     // drift + master
     c.addBox (0.14f, 5.30f, 2.42f, 1.56f);
     c.addKnob (M::cMaster, 0.85f, 6.00f, true, false, {}, ctlTip (m, M::cMaster));
@@ -399,7 +396,7 @@ inline void buildTKB (ModuleComp& c)
     const float w = c.wIn;
     c.showTitle = false;
 
-    const float gx0 = 0.95f, gx1 = w - 0.18f;
+    const float gx0 = 1.05f, gx1 = w - 0.18f;
     const float pitch = (gx1 - gx0) / 16.0f;
     auto colX = [&] (int s) { return gx0 + pitch * ((float) s + 0.5f); };
 
@@ -416,14 +413,7 @@ inline void buildTKB (ModuleComp& c)
     for (int s = 0; s < 16; ++s)
     {
         c.addJack (top[s].j, colX (s), topY, {}, true, jackTip (m, top[s].j));
-        const juce::String lab (top[s].label);
-        if (lab.startsWith ("VERT "))   // two-word labels stack, as space is one column wide
-        {
-            c.addLabel ("VERT", colX (s), topY + 0.20f, pitch * 0.98f, 0.14f);
-            c.addLabel (lab.fromFirstOccurrenceOf (" ", false, false), colX (s), topY + 0.36f, pitch * 0.98f, 0.14f);
-        }
-        else
-            c.addLabel (lab, colX (s), topY + 0.20f, pitch * 0.98f, 0.14f);
+        c.addLabel (top[s].label, colX (s), topY + 0.20f, pitch * 0.98f, 0.14f); // one line, as on the panel
     }
 
     for (int s = 0; s < 16; ++s)
@@ -432,13 +422,13 @@ inline void buildTKB (ModuleComp& c)
         c.addLabel (juce::String (s + 1), colX (s), 1.82f, 0.4f, 0.15f);
     }
 
-    c.addLine (gx0 - 0.50f, 2.48f, gx0 - 0.50f, 2.48f + 3.0f * 0.62f); // lamp bus (as on the panel)
+    c.addLine (gx0 - 0.45f, 2.48f, gx0 - 0.45f, 2.48f + 3.0f * 0.62f); // lamp bus (as on the panel)
     const char rowNames[4] = { 'A', 'B', 'C', 'D' };
     for (int r = 0; r < 4; ++r)
     {
         const float y = 2.48f + (float) r * 0.62f;
-        c.addLabel (juce::String::charToString (rowNames[r]), gx0 - 0.20f, y - 0.10f, 0.3f, 0.18f);
-        auto* led = c.addLed (16 + r, gx0 - 0.50f, y,
+        c.addLabel (juce::String::charToString (rowNames[r]), gx0 - 0.80f, y - 0.11f, 0.3f, 0.20f);
+        auto* led = c.addLed (16 + r, gx0 - 0.45f, y,
                               "Row " + juce::String::charToString (rowNames[r])
                               + " LED: lit while this row drives the ABCD output.", 0.085f);
         led->solid = true;
