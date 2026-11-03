@@ -120,3 +120,53 @@ fitted).
 - **T10 test fix**: warm-up tick before baselining (jacks read 0 until the
   first tick) and 0.1 % slew tolerance (RATE default 0.6344 = ~4.001 Hz).
 - Gauntlet 80/80, UX 22/22, zero warnings in our sources.
+
+## 2026-11-02 — Stage 2 slopes builder: DUSG ×2 + SSG (T05, T06)
+
+- **Shared slew core** (`satk::slew` in ModulesSlopes.h): dy/dt = R·tanh(e/Vk)
+  (diff-pair current limit, Stinchcombe), Vk = 25 mV. It is stepped with its
+  exact closed form, sinh(u(t)) = sinh(u0)·e^(−Rt/Vk), in double precision.
+  The core is therefore monotonic and overshoot-free at any rate, and the
+  DUSG state machine knows the exact sub-sample instant a slope completes
+  (fractional carry: dialed 125+125 µs cycles at 4000.0 Hz; END/GATE is
+  box-filtered over the sample). Slope R = C/T, with C calibrated so a full
+  0→5 V transient including the tanh landing takes exactly the dialed T. The
+  time law is unchanged from v1: expo 50 µs..10 s × 2^(−V), clamped
+  20 µs..30 s.
+- **Interpretations (T05)**:
+  - Non-retriggerable for the WHOLE transient (rise and fall), per the T05f
+    wording. This drops v1's retrigger-during-fall subharmonic-divider quirk.
+  - IN is a DC follower (target clamped ±10 V) that runs whenever no transient
+    is active. A transient's fall ends at the IN level, so a gate into IN
+    holds the output at the top (ASR) and TRIGs during the sustain do nothing.
+  - END/GATE goes high at the end of a transient and stays high through an IN
+    sustain. It goes low while the follower is falling and high again once OUT
+    is at the bottom (≤ 2.5 mV), so in ASR use it reads as a gate (A+S high,
+    R low).
+- **Interpretations (T06)**:
+  - CYCLE is a Schmitt comparator on SMOOTH OUT (high at ≤ 0.05 V, low after
+    ≥ 4.75 V), so CYCLE→SMOOTH IN gives a 0.05..4.75 V triangle with one pulse
+    per cycle.
+  - COUPLER is smooth > stepped with 1 mV hysteresis. HOT COUPLER is ±10.5 V.
+  - STEPPED is S&H on SAMPLE edges, slew-limited by STEPPED RATE ×
+    2^(−ST VC RATE).
+  - HOLD freezes SMOOTH exactly.
+- **Measured**:
+  - Timing error ≤ 0.05 % (10 ms–5 s).
+  - 1 V/oct ratio error ≤ 0.03 % (−1..+3 V).
+  - Knob-minimum cycle reaches 10 kHz.
+  - Mid-80 % deviation is 0.0000 % FS; OUT→VC RISE feedback bends it by
+    24 % FS.
+  - END duty is within 1e-7 of rise/(rise+fall) over 5–95 %.
+  - SSG cycles from 0.615 Hz to 8 kHz.
+  - Hot coupler swings ±10.5 V.
+- **T15 note**: there is no T15 test in t_system.h yet, and NTO/VCM are still
+  stubs, so the default patch is silent upstream of VCFQ. t_dusg_ssg.h has a
+  "T15 piece" that checks the real KEY→DUSG1→VCA1→OUT chain with a 2.5 V
+  220 Hz sine injected at VCA1 IN in place of the VCFQ path. Results: audible
+  (rms 0.081), below −60 dBFS after note-off, and exact 0.0 with cable 1
+  removed. The SPEC §1 loudness target (rms ≈ 0.07, peak ≈ 0.37) can only be
+  checked once NTO and VCM are real. DUSG1 peaks at 5 V, the same as v1's
+  1-unit envelope.
+- Gauntlet 113/113 (80 + 33 new), T16 63.5× realtime, UX 22/22, zero
+  warnings in our sources.
