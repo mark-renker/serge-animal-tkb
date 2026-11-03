@@ -1,7 +1,20 @@
 // Serge Animal TKB v2 — TKB (Touch Activated Keyboard Sequencer) and KEY/MIDI.
-// FOUNDATION STUBS: jack/ctl registration FROZEN per docs/SPEC.md §4.10-§4.11
-// (indices append-only forever). The stage-2 TKB/KEY builder implements
-// against gate T12 (+ T15 MIDI contract) using DspUtils only.
+// Jack/ctl registration FROZEN per docs/SPEC.md §4.10-§4.11 (indices
+// append-only forever). Stage-2 implementation against gate T12 (+ the KEY
+// GLIDE piece of the T15 MIDI contract), hero tier per
+// gauntlet/research/dsp-techniques.md §1.8:
+//   - full 16-stage × 4-row logic, RESET -> LAST-TOUCHED stage, RANDOM select
+//     (PCG32 stream from moduleSeed), vertical row sequencer on ABCD, HOLD,
+//     UP/DOWN, one-hot stage outs;
+//   - KV/PRESSURE/KP follow the PADS, not the running stage (hardware truth);
+//     KV factory-calibrated to semitones: (pad-1)/12 V, GLIDE one-pole slew;
+//   - stage-transition slew ~30 µs on the CV outs + sub-sample edge-time
+//     dither (±0.1 samples, CD4000 propagation jitter) so audio-rate clocking
+//     doesn't produce naked correlated steps;
+//   - per-stage static resistor-ladder tolerances (gain ±0.25%, offset ±3 mV)
+//     drawn deterministically from moduleSeed (T14/T17 determinism);
+//   - touch: contact-bounce jitter (0..2 samples, one RNG draw per touch) on
+//     KP, finite ~2 ms finger-contact slew on PRESSURE.
 #pragma once
 #include "EngineCore.h"
 
@@ -60,15 +73,207 @@ public:
         leds.resize (20); // 16 stage LEDs + 4 row LEDs
     }
 
-    void prepare (double sampleRate) override { Module::prepare (sampleRate); }
+    // Every random quantity derives from moduleSeed (SPEC §2): static ladder
+    // tolerances via SplitMix64, runtime streams via PCG32 with DISTINCT
+    // stream ids (random-select never perturbed by jitter draws).
+    void reseed() override
+    {
+        dsp::SplitMix64 tol (moduleSeed);
+        for (int r = 0; r < 4; ++r)
+            for (int s = 0; s < 16; ++s)
+            {
+                gainTol[r][s] = tol.tolerance (0.0025f);       // ±0.25% ladder gain
+                offTol[r][s]  = tol.nextBipolar() * 0.003f;    // ±3 mV switch/buffer offset
+            }
+        rngSel.seed (moduleSeed, 0x746b6273656cULL); // "tkbsel": RANDOM stage select
+        rngJit.seed (moduleSeed, 0x746b626a6974ULL); // "tkbjit": edge dither + contact bounce
+    }
+
+    void prepare (double sampleRate) override
+    {
+        Module::prepare (sampleRate);
+        stage = 0; row = 0; lastTouched = 0;
+        clockPhase = 0.0f; rateCache = -1.0f; rateHz = 2.0f;
+        gateRemain = 0; kpDelay = 0;
+        for (auto& p : prevPad) p = false;
+        edClock.reset(); edVert.reset(); edReset.reset(); edVertReset.reset();
+        for (auto& s : cv) s = 0.0f;
+        kvState = 0.0f; pressState = 0.0f; glideCache = -1.0f; aGlide = 0.0f;
+        aSlew  = std::exp (-1.0f / (sr * 30.0e-6f)); // ~30 µs stage-transition slew
+        aPress = std::exp (-1.0f / (sr * 2.0e-3f));  // ~2 ms finger-contact slew
+    }
+
     void tick() override
     {
-        // STUB: silence. Stage-2 TKB builder implements the full sequencer
-        // per SPEC.md §4.10 (RESET -> last-touched, vertical clock, semitone
-        // KV distinct from row-A CV, GLIDE slew, one-hot stage outs).
+        const int   len    = std::clamp ((int) std::lround (ctls[cLength].v), 0, 15) + 1;
+        const float rangeV = dsp::linmap (ctls[cRange].v, 0.5f, 5.0f);
+
+        // CV targets BEFORE this sample's events (old stage/row) — needed for
+        // the two-segment sub-sample transition update below.
+        float oldTgt[5];
+        targets (oldTgt, rangeV);
+
+        const bool hold  = isHigh (in (jHold));
+        const bool down  = isHigh (in (jUpDown));
+        const bool armed = ctls[cRandom].v >= 0.5f || isHigh (in (jRandom));
+
+        // internal clock (RUN + RATE), ORed with external CLOCK edges
+        bool clockEdge = edClock.rising (in (jClock));
+        if (ctls[cRun].v >= 0.5f)
+        {
+            if (differs (ctls[cRate].v, rateCache))
+            {
+                rateCache = ctls[cRate].v;
+                rateHz = dsp::expmap (rateCache, 0.1f, 30.0f);
+            }
+            clockPhase += rateHz / sr;
+            if (clockPhase >= 1.0f) { clockPhase -= 1.0f; clockEdge = true; }
+        }
+        const bool vertEdge      = edVert.rising (in (jVertClock));
+        const bool resetEdge     = edReset.rising (in (jReset));
+        const bool vertResetEdge = edVertReset.rising (in (jVertReset));
+
+        // touch pads: KV/KP/PRESSURE follow the PADS, not the running stage
+        // (hardware truth); a touch also selects its stage (logged interp. #4)
+        bool anyPad = false; int touched = -1;
+        for (int i = 0; i < 16; ++i)
+        {
+            const bool dn = ctls[(size_t) (cPad1 + i)].v >= 0.5f;
+            if (dn) anyPad = true;
+            if (dn && ! prevPad[i]) touched = i;
+            prevPad[i] = dn;
+        }
+
+        bool stepped = false;
+        if (touched >= 0)
+        {
+            lastTouched = touched;
+            stage = touched;
+            stepped = true;
+            kpDelay = (int) (rngJit.nextFloat01() * 3.0f); // contact bounce, 0..2 samples
+        }
+        if (resetEdge) // RESET -> LAST-TOUCHED stage (not stage 1); random if armed
+        {
+            stage = armed ? randStage (len) : lastTouched;
+            stepped = true;
+        }
+        if (clockEdge && ! hold)
+        {
+            if (armed)
+                stage = randStage (len);
+            else
+            {
+                int next = down ? stage - 1 : stage + 1; // UP/DOWN high = step down
+                if (next >= len) next = 0;               // wrap LENGTH -> 1
+                if (next < 0)    next = len - 1;         // wrap 1 -> LENGTH
+                stage = next;
+            }
+            stepped = true;
+        }
+        if (vertResetEdge)        row = 0;               // VERT RESET -> row A
+        if (vertEdge && ! hold)   row = (row + 1) & 3;   // A->B->C->D->A
+
+        if (stepped) // GATE LEN gate on each step event (v1 semantics)
+            gateRemain = (int) (dsp::expmap (ctls[cGateLen].v, 0.005f, 1.0f) * sr);
+
+        // ---- CV outs: ~30 µs transition slew, sub-sample edge dither -------
+        float tgt[5];
+        targets (tgt, rangeV);
+        bool moved = false;
+        for (int k = 0; k < 5; ++k) if (differs (tgt[k], oldTgt[k])) { moved = true; break; }
+        if (moved)
+        {
+            // edge occurs at fractional time t0 within this sample (dither
+            // ±0.1 smp — propagation-jitter decorrelation when audio-clocked)
+            const float t0 = std::clamp (0.5f + 0.1f * rngJit.nextBipolar(), 0.05f, 0.95f);
+            const float a1 = std::pow (aSlew, t0);
+            const float a2 = std::pow (aSlew, 1.0f - t0);
+            for (int k = 0; k < 5; ++k)
+            {
+                const float mid = oldTgt[k] + (cv[k] - oldTgt[k]) * a1;
+                cv[k] = tgt[k] + (mid - tgt[k]) * a2;
+            }
+        }
+        else
+        {
+            for (int k = 0; k < 5; ++k) cv[k] = tgt[k] + (cv[k] - tgt[k]) * aSlew;
+        }
+        for (int k = 0; k < 5; ++k) // snap when settled (denormal-free path)
+            if (std::fabs (cv[k] - tgt[k]) < 1.0e-5f) cv[k] = tgt[k];
+
+        // ---- KV: last-touched pad, SEMITONE calibrated: (pad-1)/12 V -------
+        const float kvTgt = (float) lastTouched * (1.0f / 12.0f);
+        const float g = ctls[cGlide].v;
+        if (differs (g, glideCache)) // GLIDE = one-pole slew, tau = GLIDE * 1.0 s
+        {
+            glideCache = g;
+            aGlide = g <= 0.0f ? 0.0f : std::exp (-1.0f / (sr * g));
+        }
+        kvState = kvTgt + (kvState - kvTgt) * aGlide;
+        if (std::fabs (kvState - kvTgt) < 1.0e-6f) kvState = kvTgt;
+
+        // ---- PRESSURE: 0..5 V while touched (ctl x 5 V), finite rise -------
+        const float pTgt = anyPad ? std::clamp (ctls[cPressure].v, 0.0f, 1.0f) * kCV : 0.0f;
+        pressState = pTgt + (pressState - pTgt) * aPress;
+        if (std::fabs (pressState - pTgt) < 1.0e-4f) pressState = pTgt;
+
+        // ---- KP: high while any pad touched (after contact-bounce delay) ---
+        float kp = 0.0f;
+        if (anyPad) { if (kpDelay > 0) --kpDelay; else kp = kCV; }
+
+        float gate = 0.0f;
+        if (gateRemain > 0) { --gateRemain; gate = kCV; }
+
+        jacks[jA].value        = cv[0];
+        jacks[jB].value        = cv[1];
+        jacks[jC].value        = cv[2];
+        jacks[jD].value        = cv[3];
+        jacks[jAbcd].value     = cv[4];
+        jacks[jKv].value       = kvState;
+        jacks[jPressure].value = pressState;
+        jacks[jGate].value     = gate;
+        jacks[jKp].value       = kp;
+        for (int i = 0; i < 16; ++i)
+        {
+            jacks[(size_t) (jStage1 + i)].value = i == stage ? kCV : 0.0f; // one-hot levels
+            leds[(size_t) i] = i == stage ? 1.0f : 0.0f;
+        }
+        for (int r = 0; r < 4; ++r)
+            leds[(size_t) (16 + r)] = r == row ? 1.0f : 0.0f;
     }
 
 private:
+    // active-stage knob voltage with the per-stage static ladder tolerance
+    float knobV (int r, int s, float rangeV) const
+    {
+        return ctls[(size_t) (cRowA1 + 16 * r + s)].v * rangeV * gainTol[r][s] + offTol[r][s];
+    }
+    void targets (float* t, float rangeV) const
+    {
+        t[0] = knobV (0, stage, rangeV);
+        t[1] = knobV (1, stage, rangeV);
+        t[2] = knobV (2, stage, rangeV);
+        t[3] = knobV (3, stage, rangeV);
+        t[4] = knobV (row, stage, rangeV); // ABCD = active row x active stage
+    }
+    int randStage (int len)
+    {
+        return (int) (((uint64_t) rngSel.next() * (uint64_t) len) >> 32); // uniform 0..len-1
+    }
+
+    // runtime state (reset in prepare; all randomness derives from moduleSeed)
+    int   stage = 0, row = 0, lastTouched = 0;
+    float clockPhase = 0.0f, rateHz = 2.0f, rateCache = -1.0f;
+    int   gateRemain = 0, kpDelay = 0;
+    bool  prevPad[16] = {};
+    EdgeDetector edClock, edVert, edReset, edVertReset;
+    float cv[5] = {};                    // A,B,C,D,ABCD slew states
+    float kvState = 0.0f, pressState = 0.0f;
+    float aSlew = 0.5f, aPress = 0.99f, aGlide = 0.0f, glideCache = -1.0f;
+    float gainTol[4][16] = {};
+    float offTol[4][16] = {};
+    dsp::PCG32 rngSel, rngJit;
+
     static constexpr const char* kOffOn[2] = { "OFF", "ON" };
     static constexpr const char* kLengths[16] =
         { "1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16" };
@@ -89,6 +294,7 @@ private:
 // fields each sample). KV is 1 V/oct with note 60 (C4) = 0 V exactly; VEL
 // holds the last note-on velocity (init 4.0 V = v1's default gain 0.8) and
 // hard-scales the OUTPUT MIXER's final mix (v1 contract, wired in System).
+// GLIDE = v1 law: one-pole portamento on KV, tau = max(0.1 ms, ctl * 0.5 s).
 class KEY : public Module
 {
 public:
@@ -106,11 +312,25 @@ public:
         leds.resize (1);
     }
 
-    void prepare (double sampleRate) override { Module::prepare (sampleRate); }
+    void prepare (double sampleRate) override
+    {
+        Module::prepare (sampleRate);
+        kv = pitchV;
+        glideCache = -1.0f; aGlide = 0.0f;
+    }
     void tick() override
     {
-        // Field pass-through is final; stage-2 builder adds the GLIDE slew.
-        jacks[jKv].value   = pitchV;
+        const float g = ctls[cGlide].v;
+        if (differs (g, glideCache)) // v1 law: tau = max(glide seconds, 0.1 ms)
+        {
+            glideCache = g;
+            const float tau = std::max (1.0e-4f, g * 0.5f);
+            aGlide = std::exp (-1.0f / (sr * tau));
+        }
+        kv = pitchV + (kv - pitchV) * aGlide;
+        if (std::fabs (kv - pitchV) < 1.0e-6f) kv = pitchV; // snap (denormal-free)
+
+        jacks[jKv].value   = kv;
         jacks[jGate].value = gateV;
         jacks[jVel].value  = velV;
         jacks[jClk].value  = clkV;
@@ -119,6 +339,9 @@ public:
 
     // written by the plugin layer (or tests) each sample:
     float pitchV = 0.0f, gateV = 0.0f, velV = 4.0f, clkV = 0.0f;
+
+private:
+    float kv = 0.0f, glideCache = -1.0f, aGlide = 0.0f;
 };
 
 } // namespace satk

@@ -39,6 +39,9 @@ enum class JackColor : uint8_t { White, Red, Black, Purple, Grey };
 inline float clampRails (float v) { return v >  kRails ? kRails : (v < -kRails ? -kRails : v); }
 inline bool  isHigh     (float v) { return v > kLogicHi; }
 inline float flushDenorm(float v) { return std::fabs (v) < 1.0e-15f ? 0.0f : v; }
+// Exact change test for coefficient caches (deliberately bit-level; spelled
+// without == so -Wfloat-equal stays clean in our sources).
+inline bool  differs    (float a, float b) { return a < b || a > b; }
 
 struct Jack
 {

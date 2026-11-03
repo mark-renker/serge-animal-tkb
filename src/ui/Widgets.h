@@ -176,7 +176,8 @@ public:
     }
     void paint (juce::Graphics& g) override
     {
-        drawTouchPad (g, getLocalBounds().toFloat(), down, pressure, active);
+        drawTouchPad (g, getLocalBounds().toFloat(), down, pressure, active,
+                      juce::String (stage + 1));
     }
     void mouseDown (const juce::MouseEvent& e) override
     {
@@ -235,6 +236,7 @@ public:
     std::vector<juce::Rectangle<float>> boxes;      // section frames
     std::vector<juce::Rectangle<float>> scales;     // "−   +" attenuverter scales
     std::vector<juce::Line<float>> lines;           // connector graphics
+    std::vector<std::pair<juce::Rectangle<float>, juce::Colour>> fills; // filled devices (TKB pad strip)
     bool darkFace = false;
 
     static juce::Rectangle<float> sq (float x, float y, float r) { return { x - r, y - r, 2 * r, 2 * r }; }
@@ -244,7 +246,7 @@ public:
     }
 
     JackW* addJack (int jackIdx, float x, float y, const juce::String& label,
-                    bool small, const juce::String& tip)
+                    bool small, const juce::String& tip, float labelW = 1.1f)
     {
         auto* j = new JackW (mod, jackIdx, host, tip);
         jacks.add (j);
@@ -252,7 +254,7 @@ public:
         float r = small ? 0.125f : 0.165f;
         j->setBounds (pxr (sq (x, y, r + 0.05f)));
         if (label.isNotEmpty())
-            labels.push_back ({ label, { x - 0.55f, y + r + 0.05f, 1.1f, 0.17f }, 0.145f, false });
+            labels.push_back ({ label, { x - labelW / 2, y + r + 0.05f, labelW, 0.17f }, 0.145f, false });
         return j;
     }
     KnobW* addKnob (int ctlIdx, float x, float y, bool big, bool withScale,
@@ -320,6 +322,7 @@ public:
     }
     void addBox (float x, float y, float w, float h) { boxes.push_back ({ x, y, w, h }); }
     void addLine (float x1, float y1, float x2, float y2) { lines.push_back ({ x1, y1, x2, y2 }); }
+    void addFill (float x, float y, float w, float h, juce::Colour c) { fills.push_back ({ { x, y, w, h }, c }); }
 
     void paint (juce::Graphics& g) override
     {
@@ -341,6 +344,11 @@ public:
                               juce::Justification::centred, 1, 0.62f);
         }
 
+        for (auto& [fr, fc] : fills)
+        {
+            g.setColour (fc);
+            g.fillRoundedRectangle (fr * PX, 6.0f);
+        }
         g.setColour (darkFace ? col::ioInk.withAlpha (0.5f) : col::boxLine);
         for (auto& bx : boxes) g.drawRect (bx * PX, 1.1f);
         for (auto& ln : lines) g.drawLine ({ ln.getStart() * PX, ln.getEnd() * PX }, 1.1f);

@@ -174,33 +174,53 @@ inline void drawToggle (juce::Graphics& g, juce::Rectangle<float> r, int pos, in
     g.drawEllipse (juce::Rectangle<float> (r.getWidth() * 0.5f, r.getWidth() * 0.5f).withCentre (tip), 1.0f);
 }
 
-// TKB touch plate (v2 addition, drawn in the same language: metal plate on
-// cream, ink outline, amber = active/pressed).
+// TKB touch plate, styled on the R*S TKB: a gold oval pad on the black
+// keyboard strip, red stage-LED dot near the top, engraved stage number.
+// Pressed = darker plate with a pressure-proportional warm glow.
 inline void drawTouchPad (juce::Graphics& g, juce::Rectangle<float> r,
-                          bool down, float pressure, bool activeStage)
+                          bool down, float pressure, bool activeStage,
+                          const juce::String& number = {})
 {
-    auto rr = r.reduced (1.5f);
-    g.setColour (down ? col::padMetalDn : col::padMetal);
-    g.fillRoundedRectangle (rr, 3.0f);
-    // brushed-plate sheen
-    g.setColour (juce::Colours::white.withAlpha (down ? 0.06f : 0.16f));
-    g.fillRoundedRectangle (rr.reduced (2.0f).removeFromTop (rr.getHeight() * 0.32f), 2.0f);
+    auto rr = r.reduced (r.getWidth() * 0.06f, r.getHeight() * 0.05f);
+    auto gold = down ? juce::Colour (0xff8f7a35) : juce::Colour (0xffb59c48);
     if (down)
-    {
-        auto pr = rr.reduced (2.0f);
-        pr = pr.removeFromBottom (pr.getHeight() * juce::jlimit (0.0f, 1.0f, pressure));
-        g.setColour (col::led.withAlpha (0.55f));
-        g.fillRoundedRectangle (pr, 2.0f);
-    }
+        gold = gold.interpolatedWith (juce::Colour (0xffe0b84f),
+                                      0.55f * juce::jlimit (0.0f, 1.0f, pressure));
+    g.setColour (gold);
+    g.fillEllipse (rr);
+    // top sheen
+    g.setColour (juce::Colours::white.withAlpha (down ? 0.05f : 0.13f));
+    auto sheen = rr.reduced (rr.getWidth() * 0.20f, rr.getHeight() * 0.10f);
+    g.fillEllipse (sheen.removeFromTop (sheen.getHeight() * 0.42f));
     if (activeStage)
     {
-        g.setColour (col::led.withAlpha (0.30f));
-        g.fillRoundedRectangle (rr, 3.0f);
-        g.setColour (col::led);
-        g.drawRoundedRectangle (rr.expanded (1.0f), 3.5f, 1.8f);
+        g.setColour (col::led.withAlpha (0.22f));
+        g.fillEllipse (rr);
     }
-    g.setColour (col::ink.withAlpha (0.85f));
-    g.drawRoundedRectangle (rr, 3.0f, 1.2f);
+    g.setColour (juce::Colours::black.withAlpha (0.75f));
+    g.drawEllipse (rr, juce::jmax (1.0f, rr.getWidth() * 0.035f));
+    // stage LED dot
+    const float dR = juce::jmax (2.0f, rr.getWidth() * 0.075f);
+    auto dot = juce::Rectangle<float> (2 * dR, 2 * dR)
+                   .withCentre ({ rr.getCentreX(), rr.getY() + rr.getHeight() * 0.18f });
+    if (activeStage)
+    {
+        g.setColour (juce::Colour (0xffe8452f).withAlpha (0.45f));
+        g.fillEllipse (dot.expanded (dR * 1.1f));
+    }
+    g.setColour (activeStage ? juce::Colour (0xffff5138) : juce::Colour (0xff58231b));
+    g.fillEllipse (dot);
+    // engraved number
+    if (number.isNotEmpty())
+    {
+        g.setColour (juce::Colours::black.withAlpha (0.72f));
+        g.setFont (panelFont (juce::jmax (8.0f, rr.getHeight() * 0.24f), true));
+        g.drawText (number,
+                    juce::Rectangle<float> (rr.getX(), rr.getY() + rr.getHeight() * 0.30f,
+                                            rr.getWidth(), rr.getHeight() * 0.30f)
+                        .getSmallestIntegerContainer(),
+                    juce::Justification::centred);
+    }
 }
 
 // small waveform glyphs used beside jacks in the drawings
@@ -261,5 +281,79 @@ inline void drawGlyph (juce::Graphics& g, juce::Rectangle<float> r, Glyph gl)
     g.setColour (col::ink);
     g.strokePath (p, juce::PathStrokeType (1.2f));
 }
+
+// ---------------------------------------------------------------------------
+// House LookAndFeel for the stock JUCE widgets the panel still uses
+// (ComboBox menus: TKB LENGTH, OUT MONITOR, header ZOOM; the CLEAR TextButton;
+// popup menus; tooltip window) — cream faces, ink lettering, Futura, square
+// frames, amber highlight; per-component colour ids override for the dark
+// header widgets. Installed once on the editor; children inherit it.
+class SatkLookAndFeel : public juce::LookAndFeel_V4
+{
+public:
+    SatkLookAndFeel()
+    {
+        setColour (juce::ComboBox::backgroundColourId, col::cream);
+        setColour (juce::ComboBox::textColourId,       col::ink);
+        setColour (juce::ComboBox::outlineColourId,    col::frame);
+        setColour (juce::ComboBox::arrowColourId,      col::ink);
+        setColour (juce::PopupMenu::backgroundColourId,            col::cream);
+        setColour (juce::PopupMenu::textColourId,                  col::ink);
+        setColour (juce::PopupMenu::highlightedBackgroundColourId, col::led.withAlpha (0.85f));
+        setColour (juce::PopupMenu::highlightedTextColourId,       col::ink);
+        setColour (juce::TextButton::buttonColourId,   col::cream);
+        setColour (juce::TextButton::buttonOnColourId, col::creamShade);
+        setColour (juce::TextButton::textColourOffId,  col::ink);
+        setColour (juce::TextButton::textColourOnId,   col::ink);
+        setColour (juce::TooltipWindow::backgroundColourId, col::cream);
+        setColour (juce::TooltipWindow::textColourId,       col::ink);
+        setColour (juce::TooltipWindow::outlineColourId,    col::frame);
+        setColour (juce::Label::textColourId, col::ink);
+    }
+
+    juce::Font getComboBoxFont (juce::ComboBox& box) override
+    {
+        return panelFont (juce::jmin (13.0f, (float) box.getHeight() * 0.62f));
+    }
+    juce::Font getPopupMenuFont() override { return panelFont (13.5f); }
+    juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
+    {
+        return panelFont (juce::jmin (13.0f, (float) buttonHeight * 0.58f), true);
+    }
+
+    void drawComboBox (juce::Graphics& g, int width, int height, bool /*isButtonDown*/,
+                       int, int, int, int, juce::ComboBox& box) override
+    {
+        auto r = juce::Rectangle<float> (0, 0, (float) width, (float) height);
+        g.setColour (box.findColour (juce::ComboBox::backgroundColourId));
+        g.fillRect (r.reduced (0.5f));
+        g.setColour (box.findColour (juce::ComboBox::outlineColourId));
+        g.drawRect (r, 1.2f);
+        auto a = r.removeFromRight ((float) height * 0.85f).reduced ((float) height * 0.3f);
+        juce::Path p;
+        p.addTriangle (a.getX(), a.getY(), a.getRight(), a.getY(), a.getCentreX(), a.getBottom());
+        g.setColour (box.findColour (juce::ComboBox::arrowColourId)
+                        .withAlpha (box.isEnabled() ? 0.9f : 0.3f));
+        g.fillPath (p);
+    }
+    void positionComboBoxText (juce::ComboBox& box, juce::Label& label) override
+    {
+        label.setBounds (5, 1, box.getWidth() - box.getHeight() - 7, box.getHeight() - 2);
+        label.setFont (getComboBoxFont (box));
+        label.setColour (juce::Label::textColourId, box.findColour (juce::ComboBox::textColourId));
+    }
+    void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour& backgroundColour,
+                               bool isOver, bool isDown) override
+    {
+        auto r = b.getLocalBounds().toFloat();
+        auto c = backgroundColour;
+        if (isDown)      c = c.contrasting (0.08f);
+        else if (isOver) c = c.contrasting (0.04f);
+        g.setColour (c);
+        g.fillRect (r.reduced (0.5f));
+        g.setColour (b.findColour (juce::TextButton::textColourOffId).withAlpha (0.8f));
+        g.drawRect (r, 1.2f);
+    }
+};
 
 } // namespace satkui
