@@ -185,3 +185,63 @@ the rev-B "aspect-locked resize, zoom and drag write the same scale" wording.
   1-unit envelope.
 - Gauntlet 113/113 (80 + 33 new), T16 63.5× realtime, UX 22/22, zero
   warnings in our sources.
+
+## 2026-11-02 — Stage 2: NTO (T02, T03, T04, T17 NTO half)
+
+Self-contained section (NTO builder). Files: `src/engine/ModulesNTO.h`
+(tick/reseed/private state only; registration untouched), `tests/t_nto.h`.
+
+- **Core**: analytic triangle core (signed phase accumulator; TZFM runs it
+  backwards) at 2x; polyBLEP on the saw wrap, polyBLAMP on both triangle
+  corners, `|inc|` as dt. SINE/TRI/SAW/VAR are decimated by the IIR halfbands
+  (the NTO sits in sync/FM feedback loops, same reasoning as the VCFQ
+  amendment). Measured: saw @ 1975 Hz worst non-harmonic **−83.2 dBc in
+  0–6 kHz, −53.2 dBc over 0–24 kHz** (gate −60/−30; v1 −27). 1x polyBLEP
+  alone measures −59 dBc in-band (T00), which is why the core is oversampled.
+- **PULSE (interpretation)**: computed with polyBLEP at the BASE rate, not
+  through the halfband. Through the halfband the band-limited square rang to
+  −1..+6 V on a RED 0/5 V jack, and clamping the ringing cost ~20 dB of alias
+  floor. The base-rate pulse stays inside 0/5 V (alias floor −69 dBc in-band,
+  −32 dBc full band @ 1975 Hz, ungated) and leads the halfband outputs by
+  ~1.5 samples. At 16 kHz it is tested as a logic clock (one edge per cycle),
+  not for sine-like amplitude.
+- **Sine shaper (fitted)**: `sin(π/2·k·tri)/sin(π/2·k)`, k = 0.94 →
+  THD 1.55% (hardware ~1–2%; gate ≤ 2%).
+- **VAR law (fitted)**: drive G = 0.94 + 1.06·s on the same shaper (folds into
+  an 'M' as G → 2), then squaring `tanh(D·y)/tanh(D)`, D = 6·s². shape s =
+  clamp01(WAVESHAPE + VC WAVE/5) (v1 law). Centroid over 9 CV steps:
+  311 → 2105 Hz, strictly increasing; THD at s = 0 is 1.55%.
+- **Soft sync (fitted law)**: Schmitt edge (rise > 1.0 V, re-arm < 0.5 V,
+  which accepts both 0/5 V pulses and ±2.5 V audio; interpretation). On an
+  edge, if the core is within ±0.25 cycle of its wrap, 60% of that phase
+  error is removed, spread over 8 internal samples (no discontinuity, so no
+  BLEP). Theoretical lock range ≈ ±15% at 1:1 and 1:2, ≈ ±7.5% at 2:1.
+  Measured: ±5% of 1:1/2:1/1:2 locks within 100 ms (≤ 0.2% ratio error over
+  100–500 ms); at 20% detune the slave stays 20% away from every simple
+  ratio (free-running).
+- **≥ 32 kHz (interpretation of "finite, non-wrapped")**: frequency ceiling
+  40 kHz (2x-rate inc ≤ 0.42, so the core genuinely runs there), verified by
+  the core's cycle counter (33,128 cycles/s at FREQ max + 1.05 V), monotonic
+  in CV, all outputs finite and ≤ 6 V. Content above 24 kHz is removed by
+  the halfband (band-limited), which is not wrapping.
+- **LIN FM**: AC coupling 2 Hz one-pole HP; Δf = (V/5)·3·f0·clamp01(DEPTH +
+  VC LIN/5) (v1 law); |f| clamped to 40 kHz. TZFM test: fc 1 kHz, fm 230 Hz,
+  β 6.5, inst. f −500..2500 Hz; sideband pairs n = 1..4 symmetric within
+  0.25 dB.
+- **Analog layer (fitted; at ANALOG DRIFT = 1, scaled by depth)**: static
+  pitch offset uniform ±2 c and V/oct scale error ±0.3 c/oct
+  (SplitMix64(moduleSeed)); wander = OU sum τ 0.5 s / 10 s / 180 s,
+  σ 0.1 / 0.5 / 1.2 c, PCG32 stream "ntodrft", 1 kHz control rate, linear
+  interpolation, soft bound 3.8·tanh(x/3.8) c ⇒ |absolute error| < 5.8 c by
+  construction. Measured at depth 1: 10-min absolute pitch −0.62..+2.84 c
+  and −2.74..+2.64 c (two seeds); interval error 0.71 c (depth 1) / 0.11 c
+  (depth 0.2); depth 0 = bit-identical across seeds.
+- **Integration TODO (System.h is frozen to this builder)**: the NTO reads the
+  depth through a public `const float* driftDepth` (nullptr ⇒ 0 ⇒ ideal).
+  Until System wires `nto->driftDepth = &out->ctls[OUT::cDrift].v`, the
+  ANALOG DRIFT knob does not reach the NTO in the plugin; the T17 tests wire
+  it explicitly.
+- Read-only probes added (not registration): `instHz()`, `cycles()`.
+- Perf: NTO ≈ 350 cyc/sample bare (spike 414); full-system T16 ≈ 60× realtime.
+- Evidence: `gauntlet/renders/v2work/nto/nto_evidence.wav` (12 s mono: saw
+  1975 Hz, VAR shape sweep, TZFM with rising index, soft-sync sweep).
