@@ -76,7 +76,7 @@ public:
         addCtl ("PAN 2",         0.65f);
         addCtl ("MONITOR",       0.0f, kNumMonitorSources, kMonitorSources);
         addCtl ("MONITOR LEVEL", 0.4f);
-        addCtl ("MASTER",        0.8f);
+        addCtl ("MASTER",        0.53f); // default trimmed 0.8 -> 0.53 (2026-11-03): note-60 rms ~0.07 = v1 target
         addCtl ("ANALOG DRIFT",  0.2f); // global tolerance+drift depth; 0 disables (T02/T08/T17)
         leds.resize (1);
     }

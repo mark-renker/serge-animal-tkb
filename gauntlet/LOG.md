@@ -377,3 +377,14 @@ the window stays capped, the drag keeps raising the zoom, and the panel
 scrolls (scrollbars / wheel / trackpad). ZOOM menu presets obey the same cap.
 The opening zoom is no longer clamped to the screen (scrolling covers it).
 U01 rewritten (UX 24/24).
+
+## 2026-11-03 — Amendment: MASTER default 0.8 → 0.53 (default-voice loudness)
+
+- With the real modules the default voice (note 60, vel 4 V) measured
+  rms 0.0999 / peak 0.775, ~+3 dB over the SPEC §1 target (~0.07 / 0.37).
+  Trimming the VCA was ruled out (T11 freezes max gain at +6 dB ± 1). Approved
+  by Mark: lower the OUT MASTER ctl default instead (SPEC §4.12 table updated;
+  ctl index/ID unchanged, v2 has no saved sessions yet).
+- Now rms 0.0704 / peak 0.594. RMS matches v1; peak stays above v1's 0.37
+  because v2's voice has a higher crest factor — not matchable with one gain.
+- Gauntlet 200/200, UX 23/23.

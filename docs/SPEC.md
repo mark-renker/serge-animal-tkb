@@ -335,7 +335,7 @@ Ctls:
 | 1 | `cPan2` | PAN 2 | 〃 | 0.65 |
 | 2 | `cMonSrc` | MONITOR | 43-way source selector (§5) | 0 (OFF) |
 | 3 | `cMonLvl` | MONITOR LEVEL | 0..1 (monitor mixed at ×0.7, v1) | 0.4 |
-| 4 | `cMaster` | MASTER | 0..1 | 0.8 |
+| 4 | `cMaster` | MASTER | 0..1 | 0.53 (was 0.8; amended 2026-11-03, see LOG) |
 | 5 | `cDrift` | ANALOG DRIFT | 0..1 global analog-layer depth (static tolerance + thermal drift); **0 = ideal/disabled** (T02/T08 measure at 0; T17 at > 0) | 0.2 |
 
 Mix law (implemented, v1-faithful): `mL = (in1·√(1−pan1) + in2·√(1−pan2) + mon·monLvl·0.7)
