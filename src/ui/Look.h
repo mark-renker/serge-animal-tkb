@@ -12,7 +12,7 @@
 namespace satkui {
 
 constexpr float PX = 52.0f;              // pixels per panel inch
-constexpr float MOD_H = 7.0f;            // module height, inches
+constexpr float MOD_H = 5.6f;            // module height, inches (PF50 rows ~5.5)
 
 namespace col {
     const juce::Colour cream       (0xffefeae0);
@@ -150,7 +150,7 @@ inline void drawSolidLed (juce::Graphics& g, juce::Rectangle<float> r, float bri
         g.fillEllipse (juce::Rectangle<float> (R * 2.4f, R * 2.4f).withCentre (c));
     }
     auto lamp = juce::Rectangle<float> (R * 1.6f, R * 1.6f).withCentre (c);
-    g.setColour (col::led.withBrightness (0.62f + 0.38f * bright));
+    g.setColour (col::led.withBrightness (0.80f + 0.20f * bright));
     g.fillEllipse (lamp);
     g.setColour (juce::Colours::white.withAlpha (0.25f + 0.3f * bright));
     g.fillEllipse (lamp.reduced (R * 0.45f).translated (-R * 0.15f, -R * 0.18f));

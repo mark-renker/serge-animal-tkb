@@ -255,6 +255,12 @@ public:
     satk::Module& target() { return cur != nullptr ? *cur : mod; }
     void use (satk::Module* m) { cur = m; }
     juce::String titleText;                         // overrides mod.title when set
+    // vertical pack factor: layout y-positions (inches) below the title band
+    // are compressed by yK; widget SIZES are unchanged (denser panel, same
+    // knobs/jacks). Layouts are authored on the 7-inch grid; yK maps them.
+    static constexpr float kLayoutTop = 0.62f;
+    float yK = 1.0f;
+    float ty (float y) const { return y <= kLayoutTop ? y : kLayoutTop + (y - kLayoutTop) * yK; }
     bool showTitle = true;                          // TKB carries its title bottom-right instead
     static constexpr float kMinLabelIn = 0.14f;     // smallest label height (inches)
 
@@ -267,6 +273,7 @@ public:
     JackW* addJack (int jackIdx, float x, float y, const juce::String& label,
                     bool small, const juce::String& tip, float labelW = 1.1f)
     {
+        y = ty (y);
         auto* j = new JackW (target(), jackIdx, host, tip);
         jacks.add (j);
         addAndMakeVisible (j);
@@ -279,6 +286,7 @@ public:
     KnobW* addKnob (int ctlIdx, float x, float y, bool big, bool withScale,
                     const juce::String& label, const juce::String& tip, float rOverride = 0.0f)
     {
+        y = ty (y);
         auto& pid = ctlParam (ctlIdx);
         auto* k = new KnobW (pid, big, tip);
         k->defaultVal = target().ctls[(size_t) ctlIdx].def;
@@ -294,8 +302,9 @@ public:
     }
     void addDiamond (float x, float y, float r = 0.34f)
     {
-        addLine (x, y - r, x + r, y); addLine (x + r, y, x, y + r);
-        addLine (x, y + r, x - r, y); addLine (x - r, y, x, y - r);
+        y = ty (y); // the bezel keeps its shape; only its centre moves
+        lines.push_back ({ x, y - r, x + r, y }); lines.push_back ({ x + r, y, x, y + r });
+        lines.push_back ({ x, y + r, x - r, y }); lines.push_back ({ x - r, y, x, y - r });
     }
     // processor input in a diamond bezel (PF50 idiom); label clears the lower vertex
     JackW* addDiamondJack (int jackIdx, float x, float y, const juce::String& label,
@@ -303,13 +312,15 @@ public:
     {
         auto* j = addJack (jackIdx, x, y, {}, true, tip);
         addDiamond (x, y, 0.30f);
-        if (label.isNotEmpty()) addLabel (label, x, y + 0.34f, labelW, 0.145f);
+        if (label.isNotEmpty()) // fixed offset below the (unscaled) lower vertex
+            labels.push_back ({ label, { x - labelW / 2, ty (y) + 0.34f, labelW, 0.175f }, 0.145f, false });
         return j;
     }
     std::vector<juce::Rectangle<float>> arches;
     ToggleW* addToggle (int ctlIdx, float x, float y, int n, const juce::String& tip,
                         const juce::String& label = {})
     {
+        y = ty (y);
         auto* t = new ToggleW (ctlParam (ctlIdx), n, tip);
         toggles.add (t);
         addAndMakeVisible (t);
@@ -321,6 +332,7 @@ public:
     ChoiceW* addChoice (int ctlIdx, float x, float y, float wInches, const juce::String& tip,
                         const juce::String& label = {})
     {
+        y = ty (y);
         auto* cb = new ChoiceW (ctlParam (ctlIdx), tip);
         choices.add (cb);
         addAndMakeVisible (cb);
@@ -334,6 +346,7 @@ public:
                        float wInches, float hInches, int pressureCtlIdx, const juce::String& tip);
     LedW* addLed (int ledIdx, float x, float y, const juce::String& tip, float r = 0.13f)
     {
+        y = ty (y);
         auto* l = new LedW (target(), ledIdx, tip);
         leds.add (l);
         addAndMakeVisible (l);
@@ -343,15 +356,16 @@ public:
     void addLabel (const juce::String& t, float x, float y, float w = 1.2f, float h = 0.15f, bool boxed = false)
     {
         h = juce::jmax (h, kMinLabelIn); // legibility floor at 100 % zoom
-        labels.push_back ({ t, { x - w / 2, y, w, h + 0.03f }, h, boxed });
+        labels.push_back ({ t, { x - w / 2, ty (y), w, h + 0.03f }, h, boxed });
     }
     void addGlyph (Glyph gl, float x, float y, float w = 0.3f, float h = 0.2f)
     {
+        y = ty (y);
         glyphs.push_back ({ { x - w / 2, y - h / 2, w, h }, gl });
     }
-    void addBox (float x, float y, float w, float h) { boxes.push_back ({ x, y, w, h }); }
-    void addLine (float x1, float y1, float x2, float y2) { lines.push_back ({ x1, y1, x2, y2 }); }
-    void addFill (float x, float y, float w, float h, juce::Colour c) { fills.push_back ({ { x, y, w, h }, c }); }
+    void addBox (float x, float y, float w, float h) { const float y0 = ty (y); boxes.push_back ({ x, y0, w, ty (y + h) - y0 }); }
+    void addLine (float x1, float y1, float x2, float y2) { lines.push_back ({ x1, ty (y1), x2, ty (y2) }); }
+    void addFill (float x, float y, float w, float h, juce::Colour c) { const float y0 = ty (y); fills.push_back ({ { x, y0, w, ty (y + h) - y0 }, c }); }
 
     void paint (juce::Graphics& g) override
     {
