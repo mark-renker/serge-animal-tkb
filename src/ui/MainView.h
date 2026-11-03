@@ -18,7 +18,7 @@ namespace satkui {
 constexpr float RAIL_IN  = 0.24f;   // wooden side rails, inches
 constexpr int   HEADER_H = 30;
 constexpr int   ROW_GAP  = 20;
-constexpr float TKB_H_IN = 6.45f;    // TKB strip (still much wider than tall)
+constexpr float TKB_H_IN = 6.40f;    // TKB strip (still much wider than tall)
 constexpr float IO_H_IN  = 1.0f;    // dark KEY/MIDI I/O strip
 
 inline juce::RangedAudioParameter& ModuleComp::ctlParam (int ctlIdx)
@@ -73,7 +73,7 @@ inline void buildNTO (ModuleComp& c)
     c.addJack (M::jSaw,  2.78f, 1.22f, "SAW",  true, jackTip (m, M::jSaw));
     c.addJack (M::jVar,   1.16f, 1.94f, "VAR",   true, jackTip (m, M::jVar));
     c.addJack (M::jPulse, 2.24f, 1.94f, "PULSE", true, jackTip (m, M::jPulse));
-    c.addLed (0, 3.06f, 0.86f, "Oscillator LED: pulses at the oscillator rate (visible at LFO speeds).", 0.10f);
+    c.addLed (0, 0.94f, 0.98f, "Oscillator LED: pulses at the oscillator rate (visible at LFO speeds).", 0.10f);
     // pitch section (1V/OCT pair, VC FREQ + attenuverter)
     c.addBox (0.14f, 2.52f, 1.60f, 1.92f);
     c.addLabel ("A", 0.55f, 2.60f, 0.3f, 0.115f);
@@ -109,18 +109,18 @@ inline void buildVCM (ModuleComp& c)
     auto& m = c.mod;
     // TOP section
     c.addBox (0.14f, 0.66f, 2.72f, 1.86f);
-    c.addLabel ("TOP", 0.50f, 0.725f, 0.55f, 0.12f);
-    c.addLed (0, 2.62f, 0.80f, "Wave-multiplier LED: shows the middle (folder) output level.", 0.09f);
+    c.addLabel ("TOP", 1.50f, 0.725f, 0.8f, 0.14f);
+    c.addLed (0, 2.74f, 2.96f, "Wave-multiplier LED: shows the middle (folder) output level.", 0.09f);
     c.addJack (M::jTopIn,  0.55f, 1.22f, "IN",  true, jackTip (m, M::jTopIn), 0.6f);
     c.addJack (M::jVcTop,  1.50f, 1.22f, "VC",  true, jackTip (m, M::jVcTop), 0.6f);
     c.addJack (M::jTopOut, 2.45f, 1.22f, "OUT", true, jackTip (m, M::jTopOut), 0.6f);
     c.addToggle (M::cTopMode, 0.85f, 2.06f, 2, ctlTip (m, M::cTopMode));
-    c.addLabel ("LO", 1.24f, 1.82f, 0.35f, 0.115f);
-    c.addLabel ("HI", 1.24f, 2.18f, 0.35f, 0.115f);
+    c.addLabel ("LO", 1.10f, 1.80f, 0.35f, 0.14f);
+    c.addLabel ("HI", 1.10f, 2.16f, 0.35f, 0.14f);
     c.addKnob (M::cTopDrive, 2.05f, 2.06f, false, false, "DRIVE", ctlTip (m, M::cTopDrive));
     // MIDDLE section (the classic folder)
     c.addBox (0.14f, 2.66f, 2.72f, 2.24f);
-    c.addLabel ("MIDDLE", 0.62f, 2.725f, 0.8f, 0.12f);
+    c.addLabel ("MIDDLE", 1.50f, 2.725f, 1.0f, 0.14f);
     c.addJack (M::jMidIn1, 0.55f, 3.18f, "IN 1", true, jackTip (m, M::jMidIn1), 0.6f);
     c.addJack (M::jMidIn2, 1.50f, 3.18f, "IN 2", true, jackTip (m, M::jMidIn2), 0.6f);
     c.addJack (M::jMidOut, 2.45f, 3.18f, "OUT",  true, jackTip (m, M::jMidOut), 0.6f);
@@ -131,7 +131,7 @@ inline void buildVCM (ModuleComp& c)
     c.addLabel ("BIAS", 2.45f, 4.56f, 0.7f, 0.125f);
     // BOTTOM section (rectifier cascade)
     c.addBox (0.14f, 5.04f, 2.72f, 1.86f);
-    c.addLabel ("BOTTOM", 0.62f, 5.105f, 0.8f, 0.12f);
+    c.addLabel ("BOTTOM", 1.50f, 5.105f, 1.0f, 0.14f);
     c.addJack (M::jBotIn1, 0.55f, 5.56f, "IN 1", true, jackTip (m, M::jBotIn1), 0.6f);
     c.addJack (M::jBotIn2, 1.50f, 5.56f, "IN 2", true, jackTip (m, M::jBotIn2), 0.6f);
     c.addJack (M::jBotOut, 2.45f, 5.56f, "OUT",  true, jackTip (m, M::jBotOut), 0.6f);
@@ -145,18 +145,24 @@ inline void buildRING (ModuleComp& c)
 {
     using M = satk::RING;
     auto& m = c.mod;
-    c.addLed (0, 1.38f, 0.84f, "Ring-modulator LED: shows the output level.", 0.09f);
+    c.addBox (0.14f, 0.66f, 1.42f, 1.16f);
+    c.addLabel ("INPUTS", 0.85f, 0.72f, 1.0f, 0.14f);
     c.addJack (M::jX, 0.50f, 1.22f, "X IN", true, jackTip (m, M::jX), 0.62f);
     c.addJack (M::jY, 1.20f, 1.22f, "Y IN", true, jackTip (m, M::jY), 0.62f);
-    c.addJack (M::jVcMorph, 0.50f, 2.24f, "VC", true, jackTip (m, M::jVcMorph), 0.6f);
-    c.addKnob (M::cMorph, 1.20f, 2.24f, false, false, "MORPH", ctlTip (m, M::cMorph));
-    c.addKnob (M::cGain, 0.85f, 3.40f, false, false, "GAIN", ctlTip (m, M::cGain));
+    c.addBox (0.14f, 1.96f, 1.42f, 1.30f);
+    c.addLabel ("MORPH", 0.85f, 2.02f, 1.0f, 0.14f);
+    c.addDiamondJack (M::jVcMorph, 0.50f, 2.62f, "VC", jackTip (m, M::jVcMorph));
+    c.addKnob (M::cMorph, 1.20f, 2.62f, false, false, {}, ctlTip (m, M::cMorph));
+    c.addBox (0.14f, 3.40f, 1.42f, 1.20f);
+    c.addKnob (M::cGain, 0.85f, 3.92f, false, false, "GAIN", ctlTip (m, M::cGain));
     // bleed trims (a boxed "feature" pair, per the R*S rejection-trim note)
-    c.addBox (0.14f, 4.10f, 1.42f, 1.30f);
-    c.addLabel ("BLEED", 0.85f, 4.165f, 0.8f, 0.12f);
-    c.addKnob (M::cTrimX, 0.50f, 4.86f, false, false, "X", ctlTip (m, M::cTrimX));
-    c.addKnob (M::cTrimY, 1.20f, 4.86f, false, false, "Y", ctlTip (m, M::cTrimY));
-    c.addJack (M::jOut, 0.85f, 6.12f, "OUT", true, jackTip (m, M::jOut), 0.7f);
+    c.addBox (0.14f, 4.74f, 1.42f, 1.18f);
+    c.addLabel ("BLEED", 0.85f, 4.80f, 0.8f, 0.14f);
+    c.addKnob (M::cTrimX, 0.50f, 5.36f, false, false, "X", ctlTip (m, M::cTrimX));
+    c.addKnob (M::cTrimY, 1.20f, 5.36f, false, false, "Y", ctlTip (m, M::cTrimY));
+    c.addBox (0.14f, 6.06f, 1.42f, 0.80f);
+    c.addJack (M::jOut, 0.85f, 6.34f, "OUT", true, jackTip (m, M::jOut), 0.7f);
+    c.addLed (0, 1.20f, 6.34f, "Ring-modulator LED: shows the output level.", 0.09f);
 }
 
 inline void buildVCFQ (ModuleComp& c)
@@ -170,20 +176,19 @@ inline void buildVCFQ (ModuleComp& c)
     c.addJack (M::jHp,    2.15f, 1.20f, "HIGH",  true, jackTip (m, M::jHp), 0.7f);
     c.addJack (M::jNotch, 0.75f, 1.94f, "NOTCH", true, jackTip (m, M::jNotch), 0.7f);
     c.addJack (M::jLp,    2.15f, 1.94f, "LOW",   true, jackTip (m, M::jLp), 0.7f);
-    c.addLed (0, 2.56f, 0.86f, "Filter LED: shows the band-pass output level.", 0.10f);
+    c.addLed (0, 1.06f, 0.98f, "Filter LED: shows the band-pass output level.", 0.10f);
     // inputs
-    c.addJack (M::jIn,  0.75f, 2.86f, "IN", true, jackTip (m, M::jIn), 0.6f);
+    c.addDiamondJack (M::jIn, 0.75f, 2.86f, "IN", jackTip (m, M::jIn));
     c.addJack (M::jAgc, 2.15f, 2.86f, "AGC IN", true, jackTip (m, M::jAgc), 0.8f);
-    c.addKnob (M::cGain, 0.75f, 3.66f, false, false, "GAIN", ctlTip (m, M::cGain));
-    c.addLine (0.75f, 3.06f, 0.75f, 3.38f);
-    c.addJack (M::jTrig, 2.15f, 3.66f, "TRIG IN", true, jackTip (m, M::jTrig), 0.8f);
+    c.addKnob (M::cGain, 0.60f, 3.76f, false, false, "GAIN", ctlTip (m, M::cGain));
+    c.addKnob (M::cPing, 1.45f, 3.76f, false, false, "PING", ctlTip (m, M::cPing));
+    c.addJack (M::jTrig, 2.30f, 3.76f, "TRIG IN", true, jackTip (m, M::jTrig), 0.8f);
     // CV row: VC Q / 1V/OCT / VC F with attenuverters below
-    c.addJack (M::jVcQ, 0.60f, 4.48f, "VC Q", true, jackTip (m, M::jVcQ), 0.62f);
-    c.addJack (M::jOct, 1.45f, 4.48f, "1V/OCT", true, jackTip (m, M::jOct), 0.75f);
-    c.addJack (M::jVcF, 2.30f, 4.48f, "VC F", true, jackTip (m, M::jVcF), 0.62f);
-    c.addKnob (M::cVcQAmt, 0.60f, 5.28f, false, true, {}, ctlTip (m, M::cVcQAmt));
-    c.addKnob (M::cPing,   1.45f, 5.28f, false, false, "PING", ctlTip (m, M::cPing));
-    c.addKnob (M::cVcFAmt, 2.30f, 5.28f, false, true, {}, ctlTip (m, M::cVcFAmt));
+    c.addJack (M::jVcQ, 0.60f, 4.56f, "VC Q", true, jackTip (m, M::jVcQ), 0.62f);
+    c.addJack (M::jOct, 1.45f, 4.56f, "1V/OCT", true, jackTip (m, M::jOct), 0.75f);
+    c.addJack (M::jVcF, 2.30f, 4.56f, "VC F", true, jackTip (m, M::jVcF), 0.62f);
+    c.addKnob (M::cVcQAmt, 0.60f, 5.30f, false, true, {}, ctlTip (m, M::cVcQAmt));
+    c.addKnob (M::cVcFAmt, 2.30f, 5.30f, false, true, {}, ctlTip (m, M::cVcFAmt));
     // big Q / FREQ
     c.addKnob (M::cQ, 0.72f, 6.22f, true, false, {}, ctlTip (m, M::cQ));
     c.addLabel ("Q", 0.72f, 6.64f, 0.5f, 0.14f, true);
@@ -209,11 +214,12 @@ inline void buildNoiseRvg (ModuleComp& c, satk::Module& noise)
     auto& m = c.mod;
     c.addBox (0.14f, 2.66f, 1.82f, 1.90f);
     c.addLabel ("RANDOM", 1.05f, 2.72f, 1.0f, 0.14f);
-    c.addLed (0, 1.80f, 2.84f, "Random-clock LED: flashes on each internal clock pulse.", 0.09f);
+    c.addLed (0, 0.86f, 3.80f, "Random-clock LED: flashes on each internal clock pulse.", 0.09f);
     c.addJack (M::jStepped, 0.55f, 3.18f, "STEPPED", true, jackTip (m, M::jStepped), 0.85f);
     c.addJack (M::jSmooth,  1.55f, 3.18f, "SMOOTH",  true, jackTip (m, M::jSmooth), 0.85f);
     c.addJack (M::jPulse,   0.55f, 4.02f, "PULSE",   true, jackTip (m, M::jPulse), 0.7f);
     c.addJack (M::jTrig,    1.55f, 4.02f, "TRIG",    true, jackTip (m, M::jTrig), 0.7f);
+    c.addBox (0.14f, 4.70f, 1.82f, 2.16f);
     c.addJack (M::jVcRate, 1.05f, 4.98f, "VC RATE", true, jackTip (m, M::jVcRate), 0.9f);
     c.addLine (1.05f, 5.20f, 1.05f, 5.54f);
     c.addKnob (M::cRate, 1.05f, 5.98f, true, false, {}, ctlTip (m, M::cRate));
@@ -250,44 +256,64 @@ inline void buildDualVca (ModuleComp& c, satk::Module& vca2)
 }
 
 // KEY/MIDI as the dark I/O strip along the bottom (PF50 house layout).
-inline void buildKeyStrip (ModuleComp& c)
+// Dark I/O strip along the bottom (PF50 house layout): MIDI keyboard I/O,
+// plus the TKB's software-only clock/mode controls (no hardware equivalent,
+// so they stay off the hardware-faithful TKB panel).
+inline void buildKeyStrip (ModuleComp& c, satk::Module& tkb)
 {
     using M = satk::KEY;
     auto& m = c.mod;
     c.darkFace = true;
-    c.addLabel ("MIDI", 0.55f, 0.18f, 0.8f, 0.15f);
-    c.addJack (M::jKv,   0.55f, 0.48f, "1V/OCT", true, jackTip (m, M::jKv), 0.8f);
-    c.addJack (M::jGate, 1.35f, 0.48f, "GATE",   true, jackTip (m, M::jGate), 0.7f);
-    c.addJack (M::jVel,  2.15f, 0.48f, "VEL",    true, jackTip (m, M::jVel), 0.7f);
-    c.addJack (M::jClk,  2.95f, 0.48f, "CLK",    true, jackTip (m, M::jClk), 0.7f);
-    c.addKnob (M::cGlide, 3.85f, 0.42f, false, false, "GLIDE", ctlTip (m, M::cGlide));
-    c.addLed (0, 4.55f, 0.42f, "Gate LED: lit while a MIDI note is held.", 0.09f);
-    c.addLabel ("SERGE ANIMAL TKB  -  SOFTWARE RECREATION  -  RENKY DENK", c.wIn - 3.0f, 0.40f, 5.6f, 0.14f);
+    c.addLabel ("MIDI", 1.68f, 0.03f, 1.0f, 0.14f);
+    c.addJack (M::jKv,   0.55f, 0.46f, "1V/OCT", true, jackTip (m, M::jKv), 0.8f);
+    c.addJack (M::jGate, 1.30f, 0.46f, "GATE",   true, jackTip (m, M::jGate), 0.7f);
+    c.addLed (0, 1.60f, 0.46f, "Gate LED: lit while a MIDI note is held.", 0.08f);
+    c.addJack (M::jVel,  2.05f, 0.46f, "VEL",    true, jackTip (m, M::jVel), 0.7f);
+    c.addJack (M::jClk,  2.80f, 0.46f, "CLK",    true, jackTip (m, M::jClk), 0.7f);
+    c.addKnob (M::cGlide, 3.55f, 0.42f, false, false, "GLIDE", ctlTip (m, M::cGlide), 0.21f);
+
+    using T = satk::TKB;
+    c.use (&tkb);
+    c.addLabel ("SEQUENCER CLOCK / MODE", 7.10f, 0.03f, 4.0f, 0.14f);
+    c.addToggle (T::cRun,    4.75f, 0.42f, 2, ctlTip (tkb, T::cRun));
+    c.addLabel ("RUN", 4.75f, 0.72f, 0.6f, 0.14f);
+    c.addToggle (T::cRandom, 5.45f, 0.42f, 2, ctlTip (tkb, T::cRandom));
+    c.addLabel ("RANDOM", 5.45f, 0.72f, 0.7f, 0.14f);
+    c.addKnob (T::cRate,    6.25f, 0.42f, false, false, "RATE",  ctlTip (tkb, T::cRate), 0.21f);
+    c.addKnob (T::cGateLen, 7.00f, 0.42f, false, false, "GATE",  ctlTip (tkb, T::cGateLen), 0.21f);
+    c.addKnob (T::cRange,   7.75f, 0.42f, false, false, "RANGE", ctlTip (tkb, T::cRange), 0.21f);
+    c.addKnob (T::cGlide,   8.50f, 0.42f, false, false, "GLIDE", ctlTip (tkb, T::cGlide), 0.21f);
+    c.addChoice (T::cLength, 9.45f, 0.42f, 0.95f, ctlTip (tkb, T::cLength), {});
+    c.addLabel ("LENGTH", 9.45f, 0.72f, 0.9f, 0.14f);
+    c.use (nullptr);
+
+    c.addLabel ("SERGE ANIMAL TKB", c.wIn - 1.55f, 0.30f, 2.6f, 0.15f);
+    c.addLabel ("SOFTWARE RECREATION  -  RENKY DENK", c.wIn - 1.55f, 0.52f, 2.6f, 0.14f);
 }
 
 inline void buildDUSG (ModuleComp& c)
 {
     using M = satk::DUSG;
     auto& m = c.mod;
-    c.addLed (0, 1.00f, 0.86f, "Slope LED: follows the 0-5 V slope output.", 0.09f);
-    c.addBox (0.14f, 0.66f, 1.72f, 2.10f);
-    c.addJack (M::jOut, 0.55f, 1.30f, "OUT", true, jackTip (m, M::jOut), 0.6f);
-    c.addGlyph (Glyph::ArcAR, 1.45f, 1.02f, 0.32f, 0.16f);
-    c.addJack (M::jEnd, 1.45f, 1.30f, "END", true, jackTip (m, M::jEnd), 0.6f);
-    c.addJack (M::jTrig, 0.55f, 2.24f, "TRIG", true, jackTip (m, M::jTrig), 0.6f);
-    c.addJack (M::jIn,   1.45f, 2.24f, "IN", true, jackTip (m, M::jIn), 0.6f);
-    // rate section
-    c.addBox (0.14f, 2.94f, 1.72f, 2.62f);
-    c.addJack (M::jVcRise, 0.55f, 3.42f, "VC RISE", true, jackTip (m, M::jVcRise), 0.8f);
-    c.addJack (M::jVcFall, 1.45f, 3.42f, "VC FALL", true, jackTip (m, M::jVcFall), 0.8f);
-    c.addLine (0.55f, 3.62f, 0.55f, 4.10f);
-    c.addLine (1.45f, 3.62f, 1.45f, 4.10f);
-    c.addGlyph (Glyph::RampUp,   0.55f, 4.28f, 0.3f, 0.16f);
-    c.addGlyph (Glyph::RampDown, 1.45f, 4.28f, 0.3f, 0.16f);
-    c.addKnob (M::cRise, 0.55f, 4.86f, false, false, "RISE", ctlTip (m, M::cRise));
-    c.addKnob (M::cFall, 1.45f, 4.86f, false, false, "FALL", ctlTip (m, M::cFall));
-    c.addToggle (M::cCycle, 1.00f, 6.10f, 2, ctlTip (m, M::cCycle));
-    c.addLabel ("CYCLE", 1.00f, 6.44f, 0.8f, 0.13f);
+    c.addBox (0.14f, 0.66f, 1.72f, 2.20f);
+    c.addJack (M::jOut, 0.55f, 1.22f, "OUT", true, jackTip (m, M::jOut), 0.6f);
+    c.addLed (0, 0.86f, 0.98f, "Slope LED: follows the 0-5 V slope output.", 0.09f);
+    c.addGlyph (Glyph::ArcAR, 1.45f, 0.94f, 0.32f, 0.16f);
+    c.addJack (M::jEnd, 1.45f, 1.22f, "END", true, jackTip (m, M::jEnd), 0.6f);
+    c.addJack (M::jTrig, 0.55f, 2.20f, "TRIG", true, jackTip (m, M::jTrig), 0.6f);
+    c.addDiamondJack (M::jIn, 1.45f, 2.20f, "IN", jackTip (m, M::jIn));
+    // rate section (rise / fall / cycle)
+    c.addBox (0.14f, 3.00f, 1.72f, 3.86f);
+    c.addJack (M::jVcRise, 0.55f, 3.46f, "VC RISE", true, jackTip (m, M::jVcRise), 0.8f);
+    c.addJack (M::jVcFall, 1.45f, 3.46f, "VC FALL", true, jackTip (m, M::jVcFall), 0.8f);
+    c.addLine (0.55f, 3.82f, 0.55f, 4.16f);
+    c.addLine (1.45f, 3.82f, 1.45f, 4.16f);
+    c.addGlyph (Glyph::RampUp,   0.55f, 4.32f, 0.3f, 0.16f);
+    c.addGlyph (Glyph::RampDown, 1.45f, 4.32f, 0.3f, 0.16f);
+    c.addKnob (M::cRise, 0.55f, 4.92f, false, false, "RISE", ctlTip (m, M::cRise));
+    c.addKnob (M::cFall, 1.45f, 4.92f, false, false, "FALL", ctlTip (m, M::cFall));
+    c.addToggle (M::cCycle, 1.00f, 6.02f, 2, ctlTip (m, M::cCycle));
+    c.addLabel ("CYCLE", 1.00f, 6.40f, 0.8f, 0.14f);
 }
 
 inline void buildSSG (ModuleComp& c)
@@ -295,36 +321,38 @@ inline void buildSSG (ModuleComp& c)
     using M = satk::SSG;
     auto& m = c.mod;
     // smooth section
-    c.addBox (0.14f, 0.66f, 2.92f, 2.16f);
-    c.addLabel ("SMOOTH", 0.68f, 0.725f, 0.85f, 0.12f);
-    c.addJack (M::jSmIn,     0.60f, 1.28f, "IN", true, jackTip (m, M::jSmIn), 0.6f);
-    c.addJack (M::jSmVcRate, 1.60f, 1.28f, "VC RATE", true, jackTip (m, M::jSmVcRate), 0.8f);
-    c.addJack (M::jSmOut,    2.60f, 1.28f, "OUT", true, jackTip (m, M::jSmOut), 0.6f);
-    c.addLed (0, 2.16f, 1.02f, "Smooth LED: follows the smooth-section output voltage.", 0.09f);
-    c.addJack (M::jHold,  0.60f, 2.22f, "HOLD", true, jackTip (m, M::jHold), 0.6f);
-    c.addJack (M::jCycle, 1.60f, 2.22f, "CYCLE", true, jackTip (m, M::jCycle), 0.66f);
-    c.addKnob (M::cSmRate, 2.60f, 2.18f, false, false, "RATE", ctlTip (m, M::cSmRate));
+    c.addBox (0.14f, 0.66f, 2.92f, 2.10f);
+    c.addLabel ("SMOOTH", 1.60f, 0.72f, 1.0f, 0.14f);
+    c.addDiamondJack (M::jSmIn, 0.60f, 1.30f, "IN", jackTip (m, M::jSmIn));
+    c.addJack (M::jSmVcRate, 1.60f, 1.30f, "VC RATE", true, jackTip (m, M::jSmVcRate), 0.8f);
+    c.addJack (M::jSmOut,    2.60f, 1.30f, "OUT", true, jackTip (m, M::jSmOut), 0.6f);
+    c.addLed (0, 2.90f, 1.06f, "Smooth LED: follows the smooth-section output voltage.", 0.09f);
+    c.addJack (M::jHold,  0.60f, 2.26f, "HOLD", true, jackTip (m, M::jHold), 0.6f);
+    c.addJack (M::jCycle, 1.60f, 2.26f, "CYCLE", true, jackTip (m, M::jCycle), 0.66f);
+    c.addKnob (M::cSmRate, 2.60f, 2.22f, false, false, "RATE", ctlTip (m, M::cSmRate));
     // stepped section
-    c.addBox (0.14f, 3.06f, 2.92f, 2.16f);
-    c.addLabel ("STEPPED", 0.70f, 3.125f, 0.9f, 0.12f);
-    c.addJack (M::jStIn,   0.60f, 3.68f, "IN", true, jackTip (m, M::jStIn), 0.6f);
-    c.addJack (M::jSample, 1.60f, 3.68f, "SAMPLE", true, jackTip (m, M::jSample), 0.76f);
-    c.addJack (M::jStOut,  2.60f, 3.68f, "OUT", true, jackTip (m, M::jStOut), 0.6f);
-    c.addLed (1, 2.16f, 3.42f, "Stepped LED: follows the stepped-section output voltage.", 0.09f);
-    c.addJack (M::jStVcRate, 0.60f, 4.62f, "VC RATE", true, jackTip (m, M::jStVcRate), 0.8f);
-    c.addKnob (M::cStRate, 2.60f, 4.58f, false, false, "RATE", ctlTip (m, M::cStRate));
+    c.addBox (0.14f, 2.90f, 2.92f, 2.10f);
+    c.addLabel ("STEPPED", 1.60f, 2.96f, 1.0f, 0.14f);
+    c.addDiamondJack (M::jStIn, 0.60f, 3.54f, "IN", jackTip (m, M::jStIn));
+    c.addJack (M::jSample, 1.60f, 3.54f, "SAMPLE", true, jackTip (m, M::jSample), 0.76f);
+    c.addJack (M::jStOut,  2.60f, 3.54f, "OUT", true, jackTip (m, M::jStOut), 0.6f);
+    c.addLed (1, 2.90f, 3.30f, "Stepped LED: follows the stepped-section output voltage.", 0.09f);
+    c.addJack (M::jStVcRate, 0.60f, 4.50f, "VC RATE", true, jackTip (m, M::jStVcRate), 0.8f);
+    c.addKnob (M::cStRate, 2.60f, 4.46f, false, false, "RATE", ctlTip (m, M::cStRate));
     // coupler
-    c.addJack (M::jCoupler,    1.20f, 5.92f, {}, true, jackTip (m, M::jCoupler));
-    c.addJack (M::jHotCoupler, 2.00f, 5.92f, "HOT", true, jackTip (m, M::jHotCoupler), 0.6f);
-    c.addLine (1.40f, 5.92f, 1.80f, 5.92f);
-    c.addLabel ("COUPLER", 1.60f, 6.24f, 1.1f, 0.135f);
+    c.addBox (0.14f, 5.14f, 2.92f, 1.72f);
+    c.addLabel ("COUPLER", 1.60f, 5.20f, 1.1f, 0.14f);
+    c.addJack (M::jCoupler,    1.10f, 5.92f, "OUT", true, jackTip (m, M::jCoupler), 0.6f);
+    c.addJack (M::jHotCoupler, 2.10f, 5.92f, "HOT", true, jackTip (m, M::jHotCoupler), 0.6f);
+    c.addLine (1.30f, 5.92f, 1.90f, 5.92f);
 }
 
 inline void buildOUT (ModuleComp& c)
 {
     using M = satk::OUT;
     auto& m = c.mod;
-    c.addLed (0, 2.36f, 0.84f, "Output LED: shows the final stereo output level.", 0.10f);
+    c.addBox (0.14f, 0.66f, 2.42f, 2.20f);
+    c.addLabel ("INPUTS", 1.35f, 0.72f, 1.0f, 0.14f);
     c.addJack (M::jIn1, 0.70f, 1.22f, "IN 1", true, jackTip (m, M::jIn1), 0.6f);
     c.addJack (M::jIn2, 2.00f, 1.22f, "IN 2", true, jackTip (m, M::jIn2), 0.6f);
     c.addLine (0.70f, 1.42f, 0.70f, 1.84f);
@@ -332,14 +360,16 @@ inline void buildOUT (ModuleComp& c)
     c.addKnob (M::cPan1, 0.70f, 2.22f, false, true, "PAN 1", ctlTip (m, M::cPan1));
     c.addKnob (M::cPan2, 2.00f, 2.22f, false, true, "PAN 2", ctlTip (m, M::cPan2));
     // monitor bus
-    c.addBox (0.14f, 3.10f, 2.42f, 1.66f);
-    c.addLabel ("MONITOR", 1.35f, 3.19f, 1.1f, 0.14f);
-    c.addChoice (M::cMonSrc, 1.35f, 3.66f, 2.05f, ctlTip (m, M::cMonSrc));
+    c.addBox (0.14f, 3.00f, 2.42f, 2.00f);
+    c.addLabel ("MONITOR", 1.35f, 3.06f, 1.1f, 0.14f);
+    c.addChoice (M::cMonSrc, 1.35f, 3.56f, 2.05f, ctlTip (m, M::cMonSrc));
     c.addKnob (M::cMonLvl, 1.35f, 4.36f, false, false, "LEVEL", ctlTip (m, M::cMonLvl));
     // drift + master
-    c.addKnob (M::cDrift, 2.00f, 5.60f, false, false, "DRIFT", ctlTip (m, M::cDrift));
-    c.addKnob (M::cMaster, 0.85f, 6.10f, true, false, {}, ctlTip (m, M::cMaster));
-    c.addLabel ("MASTER", 0.85f, 6.54f, 1.0f, 0.14f, true);
+    c.addBox (0.14f, 5.14f, 2.42f, 1.72f);
+    c.addKnob (M::cMaster, 0.85f, 6.04f, true, false, {}, ctlTip (m, M::cMaster));
+    c.addLabel ("MASTER", 0.85f, 6.48f, 1.0f, 0.14f, true);
+    c.addLed (0, 1.40f, 5.62f, "Output LED: shows the final stereo output level.", 0.10f);
+    c.addKnob (M::cDrift, 2.00f, 5.86f, false, false, "DRIFT", ctlTip (m, M::cDrift));
 }
 
 // TKB strip, modeled on the R*S TKB panel: I/O row on top (outputs boxed at
@@ -348,90 +378,73 @@ inline void buildOUT (ModuleComp& c)
 // strip with 16 gold pads at the bottom.
 inline void buildTKB (ModuleComp& c)
 {
-    // Modeled on the Random*Source TKB panel: ONE 16-column grid shared by the
-    // top I/O jacks (outputs boxed, transport inputs after), the stage-pulse
-    // row, the 4x16 knob field and the touch keyboard. The software-only
-    // clock/mode controls (no hardware equivalent) live in a boxed block at
-    // the left edge so they don't break the hardware grid.
+    // Modeled on the Random*Source TKB panel: ONE full-width 16-column grid
+    // shared by the top I/O row (VERT CLOCK first, outputs boxed, CLOCK last),
+    // the stage-pulse row, the 4x16 knob field and the touch keyboard. The
+    // software-only clock/mode controls live in the dark I/O strip below.
     using T = satk::TKB;
     auto& m = c.mod;
     const float w = c.wIn;
     c.showTitle = false;
 
-    // ---- left control block (software clock / mode) ----
-    c.addBox (0.18f, 0.40f, 1.42f, 5.72f);
-    c.addLabel ("CLOCK / MODE", 0.89f, 0.46f, 1.3f, 0.14f);
-    c.addToggle (T::cRun,    0.55f, 0.98f, 2, ctlTip (m, T::cRun));
-    c.addLabel ("RUN", 0.55f, 1.30f, 0.6f, 0.14f);
-    c.addToggle (T::cRandom, 1.23f, 0.98f, 2, ctlTip (m, T::cRandom));
-    c.addLabel ("RANDOM", 1.23f, 1.30f, 0.7f, 0.14f);
-    c.addKnob (T::cRate,    0.55f, 1.95f, false, false, "RATE",  ctlTip (m, T::cRate));
-    c.addKnob (T::cGateLen, 1.23f, 1.95f, false, false, "GATE",  ctlTip (m, T::cGateLen));
-    c.addKnob (T::cRange,   0.55f, 3.00f, false, false, "RANGE", ctlTip (m, T::cRange));
-    c.addKnob (T::cGlide,   1.23f, 3.00f, false, false, "GLIDE", ctlTip (m, T::cGlide));
-    c.addChoice (T::cLength, 0.89f, 4.30f, 1.10f, ctlTip (m, T::cLength), {});
-    c.addLabel ("LENGTH", 0.89f, 4.52f, 0.9f, 0.14f);
-
-    // ---- the 16-column grid ----
-    const float gx0 = 2.30f, gx1 = w - 0.18f;
+    const float gx0 = 0.95f, gx1 = w - 0.18f;
     const float pitch = (gx1 - gx0) / 16.0f;
     auto colX = [&] (int s) { return gx0 + pitch * ((float) s + 0.5f); };
 
-    // top row: 9 outputs (boxed, hardware order) + 7 transport inputs
-    struct TopJ { int j; const char* l1; const char* l2; };
+    struct TopJ { int j; const char* label; };
     const TopJ top[16] = {
-        { T::jAbcd, "ABCD", nullptr }, { T::jA, "A", nullptr }, { T::jB, "B", nullptr },
-        { T::jC, "C", nullptr },       { T::jD, "D", nullptr },
-        { T::jKv, "KEY", "VOLT" },     { T::jKp, "KEY", "PULSE" }, { T::jGate, "KEY", "GATE" },
-        { T::jPressure, "PRES-", "SURE" },
-        { T::jClock, "CLOCK", nullptr }, { T::jVertClock, "VERT", "CLOCK" },
-        { T::jReset, "RESET", nullptr }, { T::jVertReset, "VERT", "RESET" },
-        { T::jRandom, "RANDOM", nullptr }, { T::jUpDown, "UP/", "DOWN" }, { T::jHold, "HOLD", nullptr },
+        { T::jVertClock, "VERT CLOCK" },
+        { T::jAbcd, "ABCD" }, { T::jA, "A" }, { T::jB, "B" }, { T::jC, "C" }, { T::jD, "D" },
+        { T::jKv, "KEY CV" }, { T::jKp, "KEY PULSE" }, { T::jGate, "KEY GATE" }, { T::jPressure, "PRESSURE" },
+        { T::jReset, "RESET" }, { T::jVertReset, "VERT RESET" }, { T::jRandom, "RANDOM" },
+        { T::jUpDown, "UP/DOWN" }, { T::jHold, "HOLD" }, { T::jClock, "CLOCK" },
     };
-    const float topY = 0.78f;
-    c.addBox (colX (0) - pitch * 0.48f, 0.40f, pitch * 8.96f, 1.02f);
+    const float topY = 0.80f;
+    c.addBox (colX (1) - pitch * 0.48f, 0.42f, pitch * 8.96f, 0.86f); // outputs ABCD..PRESSURE
     for (int s = 0; s < 16; ++s)
     {
         c.addJack (top[s].j, colX (s), topY, {}, true, jackTip (m, top[s].j));
-        c.addLabel (top[s].l1, colX (s), topY + 0.20f, pitch * 0.98f, 0.14f);
-        if (top[s].l2 != nullptr)
-            c.addLabel (top[s].l2, colX (s), topY + 0.37f, pitch * 0.98f, 0.14f);
+        const juce::String lab (top[s].label);
+        if (lab.startsWith ("VERT "))   // two-word labels stack, as space is one column wide
+        {
+            c.addLabel ("VERT", colX (s), topY + 0.20f, pitch * 0.98f, 0.14f);
+            c.addLabel (lab.fromFirstOccurrenceOf (" ", false, false), colX (s), topY + 0.36f, pitch * 0.98f, 0.14f);
+        }
+        else
+            c.addLabel (lab, colX (s), topY + 0.20f, pitch * 0.98f, 0.14f);
     }
 
-    // stage-pulse jacks 1..16, directly under the top row
     for (int s = 0; s < 16; ++s)
     {
-        c.addJack (T::jStage1 + s, colX (s), 1.80f, {}, true, jackTip (m, T::jStage1 + s));
-        c.addLabel (juce::String (s + 1), colX (s), 2.00f, 0.4f, 0.15f);
+        c.addJack (T::jStage1 + s, colX (s), 1.62f, {}, true, jackTip (m, T::jStage1 + s));
+        c.addLabel (juce::String (s + 1), colX (s), 1.82f, 0.4f, 0.15f);
     }
 
-    // knob rows A-D with letters + solid row lamps
     const char rowNames[4] = { 'A', 'B', 'C', 'D' };
     for (int r = 0; r < 4; ++r)
     {
-        const float y = 2.62f + (float) r * 0.58f;
+        const float y = 2.48f + (float) r * 0.62f;
         c.addLabel (juce::String::charToString (rowNames[r]), gx0 - 0.20f, y - 0.10f, 0.3f, 0.18f);
-        auto* led = c.addLed (16 + r, gx0 - 0.48f, y,
+        auto* led = c.addLed (16 + r, gx0 - 0.50f, y,
                               "Row " + juce::String::charToString (rowNames[r])
                               + " LED: lit while this row drives the ABCD output.", 0.085f);
         led->solid = true;
         for (int s = 0; s < 16; ++s)
         {
             const int ctl = T::cRowA1 + r * 16 + s;
-            c.addKnob (ctl, colX (s), y, false, false, {}, ctlTip (m, ctl));
+            c.addKnob (ctl, colX (s), y, false, false, {}, ctlTip (m, ctl), 0.21f);
         }
     }
 
-    // touch keyboard: full-width black strip, tall gold egg pads filling it
-    const float stripY = 5.04f, stripH = 1.08f;
-    c.addFill (gx0 - 0.62f, stripY, w - 0.18f - (gx0 - 0.62f), stripH, juce::Colour (0xff17150f));
+    // touch keyboard: black strip, pads cut flat by its lower edge
+    const float stripY = 4.92f, stripH = 1.12f;
+    c.addFill (0.18f, stripY, w - 0.36f, stripH, juce::Colour (0xff17150f));
     for (int s = 0; s < 16; ++s)
-        c.addPad (T::cPad1 + s, s, colX (s), stripY + stripH * 0.5f,
-                  juce::jmin (0.70f, pitch * 0.90f), stripH - 0.08f,
+        c.addPad (T::cPad1 + s, s, colX (s), stripY + 0.06f + (stripH - 0.06f) * 0.5f,
+                  juce::jmin (0.72f, pitch * 0.82f), stripH - 0.06f,
                   T::cPressure, ctlTip (m, T::cPad1 + s));
 
-    // panel title bottom-right, as on the R*S panel
-    c.addLabel ("TOUCH ACTIVATED KEYBOARD SEQUENCER", w - 2.75f, 6.18f, 5.2f, 0.17f);
+    c.addLabel ("TOUCH ACTIVATED KEYBOARD SEQUENCER", w - 2.75f, 6.12f, 5.2f, 0.17f);
 }
 
 inline void buildSkeleton (ModuleComp& c)
@@ -444,7 +457,7 @@ inline void buildSkeleton (ModuleComp& c)
     if (id == "rvg")   { buildNoiseRvg (c, *c.proc.sys.noise); return; }
     if (id == "dusg1" || id == "dusg2") { buildDUSG (c); return; }
     if (id == "ssg")   { buildSSG (c);   return; }
-    if (id == "key")   { buildKeyStrip (c); return; }
+    if (id == "key")   { buildKeyStrip (c, *c.proc.sys.tkb); return; }
     if (id == "vca1")  { buildDualVca (c, *c.proc.sys.vca2); return; }
     if (id == "out")   { buildOUT (c);   return; }
     if (id == "tkb")   { buildTKB (c);   return; }

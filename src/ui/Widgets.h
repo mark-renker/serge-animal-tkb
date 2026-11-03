@@ -277,14 +277,14 @@ public:
         return j;
     }
     KnobW* addKnob (int ctlIdx, float x, float y, bool big, bool withScale,
-                    const juce::String& label, const juce::String& tip)
+                    const juce::String& label, const juce::String& tip, float rOverride = 0.0f)
     {
         auto& pid = ctlParam (ctlIdx);
         auto* k = new KnobW (pid, big, tip);
         k->defaultVal = target().ctls[(size_t) ctlIdx].def;
         knobs.add (k);
         addAndMakeVisible (k);
-        float r = big ? 0.31f : 0.25f;
+        float r = rOverride > 0.0f ? rOverride : (big ? 0.31f : 0.25f);
         k->setBounds (pxr (sq (x, y, r)));
         if (big) arches.push_back ({ x - r - 0.08f, y - r - 0.1f, 2 * (r + 0.08f), r + 0.18f });
         if (withScale) scales.push_back ({ x - 0.42f, y + r + 0.03f, 0.84f, 0.16f });
@@ -296,6 +296,15 @@ public:
     {
         addLine (x, y - r, x + r, y); addLine (x + r, y, x, y + r);
         addLine (x, y + r, x - r, y); addLine (x - r, y, x, y - r);
+    }
+    // processor input in a diamond bezel (PF50 idiom); label clears the lower vertex
+    JackW* addDiamondJack (int jackIdx, float x, float y, const juce::String& label,
+                           const juce::String& tip, float labelW = 0.7f)
+    {
+        auto* j = addJack (jackIdx, x, y, {}, true, tip);
+        addDiamond (x, y, 0.30f);
+        if (label.isNotEmpty()) addLabel (label, x, y + 0.34f, labelW, 0.145f);
+        return j;
     }
     std::vector<juce::Rectangle<float>> arches;
     ToggleW* addToggle (int ctlIdx, float x, float y, int n, const juce::String& tip,
@@ -358,24 +367,23 @@ public:
         if (! darkFace && showTitle)
         {
             g.setColour (inkCol);
-            // long names wrap to two lines like the STS panel titles
-            // ("SMOOTH / STEPPED / GENERATOR") instead of truncating
-            const float avail = (float) getWidth() - 8.0f;
-            const auto oneLine = panelFont (0.205f * PX, true);
+            // titles keep a side margin: shrink up to ~22 % first, wrap to two
+            // lines only if still too wide (STS-style two-line titles)
             const auto& title = titleText.isNotEmpty() ? titleText : juce::String (mod.title);
-            if (textWidth (oneLine, title) * 0.78f <= avail) // fits with mild squeeze
+            const float avail = (float) getWidth() - 0.30f * PX;
+            const float tw = textWidth (panelFont (0.205f * PX, true), title);
+            const float k = tw <= avail ? 1.0f : avail / tw;
+            if (k >= 0.78f)
             {
-                g.setFont (oneLine);
-                g.drawFittedText (title,
-                                  juce::Rectangle<float> (4.0f, 0.20f * PX, avail, 0.28f * PX).getSmallestIntegerContainer(),
-                                  juce::Justification::centred, 1, 0.62f);
+                g.setFont (panelFont (0.205f * PX * k, true));
+                g.drawText (title, juce::Rectangle<float> (0.15f * PX, 0.20f * PX, avail, 0.28f * PX).getSmallestIntegerContainer(),
+                            juce::Justification::centred, false);
             }
             else
             {
                 g.setFont (panelFont (0.17f * PX, true));
-                g.drawFittedText (title,
-                                  juce::Rectangle<float> (4.0f, 0.12f * PX, avail, 0.46f * PX).getSmallestIntegerContainer(),
-                                  juce::Justification::centred, 2, 0.8f);
+                g.drawFittedText (title, juce::Rectangle<float> (0.15f * PX, 0.12f * PX, avail, 0.46f * PX).getSmallestIntegerContainer(),
+                                  juce::Justification::centred, 2, 0.9f);
             }
         }
 

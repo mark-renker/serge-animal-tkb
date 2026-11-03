@@ -175,41 +175,58 @@ inline void drawPushButton (juce::Graphics& g, juce::Rectangle<float> r, bool do
 
 inline void drawToggle (juce::Graphics& g, juce::Rectangle<float> r, int pos, int nPos)
 {
-    // bat-lever toggle: small round base, long lever with ball end
+    // bat toggle on a hex nut (as on Serge / R*S panels): the short tapered
+    // lever points toward the selected position
     auto c0 = r.getCentre();
-    auto base = juce::Rectangle<float> (r.getWidth() * 0.52f, r.getHeight() * 0.3f).withCentre (c0);
-    g.setColour (juce::Colour (0xff9b968c));
-    g.fillEllipse (base);
-    g.setColour (col::ink.withAlpha (0.9f));
-    g.drawEllipse (base, 1.1f);
-    float t = nPos <= 1 ? 0.5f : (float) pos / (float) (nPos - 1);
-    float y = juce::jmap (t, r.getY() + r.getHeight() * 0.06f, r.getBottom() - r.getHeight() * 0.06f);
-    auto tip = juce::Point<float> (r.getCentreX(), y);
-    g.setColour (juce::Colour (0xff474440));
-    g.drawLine (c0.x, c0.y, tip.x, tip.y, r.getWidth() * 0.22f);
-    g.setColour (juce::Colour (0xffe2dfd6));
-    g.fillEllipse (juce::Rectangle<float> (r.getWidth() * 0.5f, r.getWidth() * 0.5f).withCentre (tip));
-    g.setColour (col::ink.withAlpha (0.85f));
-    g.drawEllipse (juce::Rectangle<float> (r.getWidth() * 0.5f, r.getWidth() * 0.5f).withCentre (tip), 1.0f);
+    const float nutR = juce::jmin (r.getWidth(), r.getHeight()) * 0.30f;
+    juce::Path nut;
+    for (int k = 0; k < 6; ++k)
+    {
+        const float a = juce::MathConstants<float>::pi / 3.0f * (float) k + juce::MathConstants<float>::pi / 6.0f;
+        const juce::Point<float> p (c0.x + nutR * std::cos (a), c0.y + nutR * std::sin (a));
+        if (k == 0) nut.startNewSubPath (p); else nut.lineTo (p);
+    }
+    nut.closeSubPath();
+    g.setColour (juce::Colour (0xffb9b5ac));
+    g.fillPath (nut);
+    g.setColour (col::ink.withAlpha (0.8f));
+    g.strokePath (nut, juce::PathStrokeType (1.0f));
+    g.setColour (juce::Colour (0xff6d6a64));
+    g.fillEllipse (juce::Rectangle<float> (nutR * 0.9f, nutR * 0.9f).withCentre (c0));
+
+    const float t = nPos <= 1 ? 0.5f : (float) pos / (float) (nPos - 1); // 0 = up
+    const float len = r.getHeight() * 0.42f;
+    const juce::Point<float> tip (c0.x, c0.y + (t - 0.5f) * 2.0f * len);
+    if (std::abs (t - 0.5f) > 0.01f)
+    {
+        juce::Path lever;
+        const float w0 = nutR * 0.42f, w1 = nutR * 0.26f;
+        lever.addQuadrilateral (c0.x - w0, c0.y, c0.x + w0, c0.y, tip.x + w1, tip.y, tip.x - w1, tip.y);
+        g.setColour (juce::Colour (0xffd9d6cf));
+        g.fillPath (lever);
+        g.setColour (col::ink.withAlpha (0.75f));
+        g.strokePath (lever, juce::PathStrokeType (0.9f));
+    }
+    const float ballR = nutR * 0.42f;
+    g.setColour (juce::Colour (0xffeceae4));
+    g.fillEllipse (juce::Rectangle<float> (2 * ballR, 2 * ballR).withCentre (tip));
+    g.setColour (col::ink.withAlpha (0.8f));
+    g.drawEllipse (juce::Rectangle<float> (2 * ballR, 2 * ballR).withCentre (tip), 0.9f);
 }
 
-// TKB touch plate, styled on the R*S TKB: a gold oval pad on the black
-// keyboard strip, red stage-LED dot near the top, engraved stage number.
-// Pressed = darker plate with a pressure-proportional warm glow.
 inline void drawTouchPad (juce::Graphics& g, juce::Rectangle<float> r,
                           bool down, float pressure, bool activeStage,
                           const juce::String& number = {})
 {
-    // R*S TKB pad: tall gold egg, narrow end up, filling the black strip
-    auto rr = r.reduced (r.getWidth() * 0.05f, r.getHeight() * 0.03f);
+    auto rr = r.reduced (r.getWidth() * 0.05f, 0.0f).withTrimmedTop (r.getHeight() * 0.03f);
     const float cx = rr.getCentreX(), t = rr.getY(), h = rr.getHeight(), w = rr.getWidth();
+    // R*S pad: a tall oval whose lower part is cut off by the strip edge
     juce::Path egg;
-    egg.startNewSubPath (cx, t);
-    egg.cubicTo (cx + w * 0.46f, t, rr.getRight(), t + h * 0.22f, rr.getRight(), t + h * 0.55f);
-    egg.cubicTo (rr.getRight(), t + h * 0.86f, cx + w * 0.36f, rr.getBottom(), cx, rr.getBottom());
-    egg.cubicTo (cx - w * 0.36f, rr.getBottom(), rr.getX(), t + h * 0.86f, rr.getX(), t + h * 0.55f);
-    egg.cubicTo (rr.getX(), t + h * 0.22f, cx - w * 0.46f, t, cx, t);
-    egg.closeSubPath();
+    egg.addEllipse (rr.getX(), t, w, h * 1.32f);
+    juce::Path clip;
+    clip.addRectangle (rr.getX() - 2.0f, t - 2.0f, w + 4.0f, h + 2.0f);
+    juce::Graphics::ScopedSaveState clipScope (g);
+    g.reduceClipRegion (clip);
 
     auto gold = down ? juce::Colour (0xff8f7a35) : juce::Colour (0xffb09a45);
     if (down)
@@ -319,9 +336,9 @@ public:
         tab.addTriangle (W, 0.0f, W, H, 0.0f, H);
         g.setColour (juce::Colour (0xff0e0d0f).withAlpha (0.85f));
         g.fillPath (tab);
-        g.setColour (col::ioInk.withAlpha (isMouseOver || isMouseDragging ? 1.0f : 0.8f));
-        for (float f : { 0.30f, 0.55f, 0.80f })
-            g.drawLine (W * f, H - 1.5f, W - 1.5f, H * f, 2.0f);
+        g.setColour (isMouseOver || isMouseDragging ? juce::Colours::white : col::cream);
+        for (float f : { 0.25f, 0.50f, 0.75f })
+            g.drawLine (W * f, H - 1.5f, W - 1.5f, H * f, 2.2f);
     }
 
     SatkLookAndFeel()
