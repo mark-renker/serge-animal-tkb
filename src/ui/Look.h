@@ -139,6 +139,25 @@ inline void drawLed (juce::Graphics& g, juce::Rectangle<float> r, float bright)
     g.fillEllipse (juce::Rectangle<float> (R * 0.42f, R * 0.42f).withCentre (c));
 }
 
+// solid round lamp (R*S TKB row LEDs): dim amber when off, glowing when lit
+inline void drawSolidLed (juce::Graphics& g, juce::Rectangle<float> r, float bright)
+{
+    auto c = r.getCentre();
+    const float R = r.getWidth() * 0.5f;
+    if (bright > 0.02f)
+    {
+        g.setColour (col::led.withAlpha (0.35f * bright));
+        g.fillEllipse (juce::Rectangle<float> (R * 2.4f, R * 2.4f).withCentre (c));
+    }
+    auto lamp = juce::Rectangle<float> (R * 1.6f, R * 1.6f).withCentre (c);
+    g.setColour (col::led.withBrightness (0.62f + 0.38f * bright));
+    g.fillEllipse (lamp);
+    g.setColour (juce::Colours::white.withAlpha (0.25f + 0.3f * bright));
+    g.fillEllipse (lamp.reduced (R * 0.45f).translated (-R * 0.15f, -R * 0.18f));
+    g.setColour (col::ink.withAlpha (0.55f));
+    g.drawEllipse (lamp, 1.0f);
+}
+
 inline void drawPushButton (juce::Graphics& g, juce::Rectangle<float> r, bool down)
 {
     auto c = r.getCentre();
@@ -181,44 +200,45 @@ inline void drawTouchPad (juce::Graphics& g, juce::Rectangle<float> r,
                           bool down, float pressure, bool activeStage,
                           const juce::String& number = {})
 {
-    auto rr = r.reduced (r.getWidth() * 0.06f, r.getHeight() * 0.05f);
-    auto gold = down ? juce::Colour (0xff8f7a35) : juce::Colour (0xffb59c48);
+    // R*S TKB pad: tall gold egg, narrow end up, filling the black strip
+    auto rr = r.reduced (r.getWidth() * 0.05f, r.getHeight() * 0.03f);
+    const float cx = rr.getCentreX(), t = rr.getY(), h = rr.getHeight(), w = rr.getWidth();
+    juce::Path egg;
+    egg.startNewSubPath (cx, t);
+    egg.cubicTo (cx + w * 0.46f, t, rr.getRight(), t + h * 0.22f, rr.getRight(), t + h * 0.55f);
+    egg.cubicTo (rr.getRight(), t + h * 0.86f, cx + w * 0.36f, rr.getBottom(), cx, rr.getBottom());
+    egg.cubicTo (cx - w * 0.36f, rr.getBottom(), rr.getX(), t + h * 0.86f, rr.getX(), t + h * 0.55f);
+    egg.cubicTo (rr.getX(), t + h * 0.22f, cx - w * 0.46f, t, cx, t);
+    egg.closeSubPath();
+
+    auto gold = down ? juce::Colour (0xff8f7a35) : juce::Colour (0xffb09a45);
     if (down)
         gold = gold.interpolatedWith (juce::Colour (0xffe0b84f),
                                       0.55f * juce::jlimit (0.0f, 1.0f, pressure));
     g.setColour (gold);
-    g.fillEllipse (rr);
-    // top sheen
-    g.setColour (juce::Colours::white.withAlpha (down ? 0.05f : 0.13f));
-    auto sheen = rr.reduced (rr.getWidth() * 0.20f, rr.getHeight() * 0.10f);
-    g.fillEllipse (sheen.removeFromTop (sheen.getHeight() * 0.42f));
+    g.fillPath (egg);
     if (activeStage)
     {
-        g.setColour (col::led.withAlpha (0.22f));
-        g.fillEllipse (rr);
+        g.setColour (col::led.withAlpha (0.20f));
+        g.fillPath (egg);
     }
-    g.setColour (juce::Colours::black.withAlpha (0.75f));
-    g.drawEllipse (rr, juce::jmax (1.0f, rr.getWidth() * 0.035f));
-    // stage LED dot
-    const float dR = juce::jmax (2.0f, rr.getWidth() * 0.075f);
-    auto dot = juce::Rectangle<float> (2 * dR, 2 * dR)
-                   .withCentre ({ rr.getCentreX(), rr.getY() + rr.getHeight() * 0.18f });
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.strokePath (egg, juce::PathStrokeType (juce::jmax (1.0f, w * 0.025f)));
+    // stage LED dot near the top, engraved number below it (as on the panel)
+    const float dR = juce::jmax (2.0f, w * 0.065f);
+    auto dot = juce::Rectangle<float> (2 * dR, 2 * dR).withCentre ({ cx, t + h * 0.12f });
     if (activeStage)
     {
         g.setColour (juce::Colour (0xffe8452f).withAlpha (0.45f));
         g.fillEllipse (dot.expanded (dR * 1.1f));
     }
-    g.setColour (activeStage ? juce::Colour (0xffff5138) : juce::Colour (0xff58231b));
+    g.setColour (activeStage ? juce::Colour (0xffff5138) : juce::Colour (0xff8a2b1e));
     g.fillEllipse (dot);
-    // engraved number
     if (number.isNotEmpty())
     {
-        g.setColour (juce::Colours::black.withAlpha (0.72f));
-        g.setFont (panelFont (juce::jmax (8.0f, rr.getHeight() * 0.24f), true));
-        g.drawText (number,
-                    juce::Rectangle<float> (rr.getX(), rr.getY() + rr.getHeight() * 0.30f,
-                                            rr.getWidth(), rr.getHeight() * 0.30f)
-                        .getSmallestIntegerContainer(),
+        g.setColour (juce::Colours::black.withAlpha (0.75f));
+        g.setFont (panelFont (juce::jmax (8.0f, w * 0.30f), true));
+        g.drawText (number, juce::Rectangle<float> (rr.getX(), t + h * 0.17f, w, h * 0.16f).getSmallestIntegerContainer(),
                     juce::Justification::centred);
     }
 }
@@ -291,6 +311,19 @@ inline void drawGlyph (juce::Graphics& g, juce::Rectangle<float> r, Glyph gl)
 class SatkLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
+    // visible resize grip: three bright diagonal ridges on a dark tab
+    void drawCornerResizer (juce::Graphics& g, int w, int h, bool isMouseOver, bool isMouseDragging) override
+    {
+        const float W = (float) w, H = (float) h;
+        juce::Path tab;
+        tab.addTriangle (W, 0.0f, W, H, 0.0f, H);
+        g.setColour (juce::Colour (0xff0e0d0f).withAlpha (0.85f));
+        g.fillPath (tab);
+        g.setColour (col::ioInk.withAlpha (isMouseOver || isMouseDragging ? 1.0f : 0.8f));
+        for (float f : { 0.30f, 0.55f, 0.80f })
+            g.drawLine (W * f, H - 1.5f, W - 1.5f, H * f, 2.0f);
+    }
+
     SatkLookAndFeel()
     {
         setColour (juce::ComboBox::backgroundColourId, col::cream);

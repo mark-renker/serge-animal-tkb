@@ -131,7 +131,12 @@ public:
         setTooltip (functionDescription);
         setInterceptsMouseClicks (false, false);
     }
-    void paint (juce::Graphics& g) override { drawLed (g, getLocalBounds().toFloat(), bright); }
+    void paint (juce::Graphics& g) override
+    {
+        if (solid) drawSolidLed (g, getLocalBounds().toFloat(), bright);
+        else       drawLed (g, getLocalBounds().toFloat(), bright);
+    }
+    bool solid = false; // hardware-style round lamp (TKB row LEDs)
     void refresh()
     {
         float b = idx < (int) mod.leds.size() ? mod.leds[(size_t) idx] : 0.0f;
@@ -244,6 +249,14 @@ public:
     std::vector<juce::Line<float>> lines;           // connector graphics
     std::vector<std::pair<juce::Rectangle<float>, juce::Colour>> fills; // filled devices (TKB pad strip)
     bool darkFace = false;
+    // composite panels: widgets added after use(&other) bind to that module
+    // (e.g. NOISE inside the RVG panel, VCA 2 inside the dual-VCA panel)
+    satk::Module* cur = nullptr;
+    satk::Module& target() { return cur != nullptr ? *cur : mod; }
+    void use (satk::Module* m) { cur = m; }
+    juce::String titleText;                         // overrides mod.title when set
+    bool showTitle = true;                          // TKB carries its title bottom-right instead
+    static constexpr float kMinLabelIn = 0.14f;     // smallest label height (inches)
 
     static juce::Rectangle<float> sq (float x, float y, float r) { return { x - r, y - r, 2 * r, 2 * r }; }
     juce::Rectangle<int> pxr (juce::Rectangle<float> inches) const
@@ -254,7 +267,7 @@ public:
     JackW* addJack (int jackIdx, float x, float y, const juce::String& label,
                     bool small, const juce::String& tip, float labelW = 1.1f)
     {
-        auto* j = new JackW (mod, jackIdx, host, tip);
+        auto* j = new JackW (target(), jackIdx, host, tip);
         jacks.add (j);
         addAndMakeVisible (j);
         float r = small ? 0.125f : 0.165f;
@@ -268,7 +281,7 @@ public:
     {
         auto& pid = ctlParam (ctlIdx);
         auto* k = new KnobW (pid, big, tip);
-        k->defaultVal = mod.ctls[(size_t) ctlIdx].def;
+        k->defaultVal = target().ctls[(size_t) ctlIdx].def;
         knobs.add (k);
         addAndMakeVisible (k);
         float r = big ? 0.31f : 0.25f;
@@ -312,7 +325,7 @@ public:
                        float wInches, float hInches, int pressureCtlIdx, const juce::String& tip);
     LedW* addLed (int ledIdx, float x, float y, const juce::String& tip, float r = 0.13f)
     {
-        auto* l = new LedW (mod, ledIdx, tip);
+        auto* l = new LedW (target(), ledIdx, tip);
         leds.add (l);
         addAndMakeVisible (l);
         l->setBounds (pxr (sq (x, y, r)));
@@ -320,6 +333,7 @@ public:
     }
     void addLabel (const juce::String& t, float x, float y, float w = 1.2f, float h = 0.15f, bool boxed = false)
     {
+        h = juce::jmax (h, kMinLabelIn); // legibility floor at 100 % zoom
         labels.push_back ({ t, { x - w / 2, y, w, h + 0.03f }, h, boxed });
     }
     void addGlyph (Glyph gl, float x, float y, float w = 0.3f, float h = 0.2f)
@@ -341,24 +355,25 @@ public:
         g.drawRect (getLocalBounds().toFloat(), 1.4f);
 
         auto inkCol = darkFace ? col::ioInk : col::ink;
-        if (! darkFace)
+        if (! darkFace && showTitle)
         {
             g.setColour (inkCol);
             // long names wrap to two lines like the STS panel titles
             // ("SMOOTH / STEPPED / GENERATOR") instead of truncating
             const float avail = (float) getWidth() - 8.0f;
             const auto oneLine = panelFont (0.205f * PX, true);
-            if (textWidth (oneLine, mod.title) * 0.78f <= avail) // fits with mild squeeze
+            const auto& title = titleText.isNotEmpty() ? titleText : juce::String (mod.title);
+            if (textWidth (oneLine, title) * 0.78f <= avail) // fits with mild squeeze
             {
                 g.setFont (oneLine);
-                g.drawFittedText (mod.title,
+                g.drawFittedText (title,
                                   juce::Rectangle<float> (4.0f, 0.20f * PX, avail, 0.28f * PX).getSmallestIntegerContainer(),
                                   juce::Justification::centred, 1, 0.62f);
             }
             else
             {
                 g.setFont (panelFont (0.17f * PX, true));
-                g.drawFittedText (mod.title,
+                g.drawFittedText (title,
                                   juce::Rectangle<float> (4.0f, 0.12f * PX, avail, 0.46f * PX).getSmallestIntegerContainer(),
                                   juce::Justification::centred, 2, 0.8f);
             }

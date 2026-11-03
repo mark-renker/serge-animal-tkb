@@ -18,11 +18,12 @@ namespace satkui {
 constexpr float RAIL_IN  = 0.24f;   // wooden side rails, inches
 constexpr int   HEADER_H = 30;
 constexpr int   ROW_GAP  = 20;
-constexpr float TKB_H_IN = 7.0f;    // TKB strip (still much wider than tall)
+constexpr float TKB_H_IN = 6.45f;    // TKB strip (still much wider than tall)
+constexpr float IO_H_IN  = 1.0f;    // dark KEY/MIDI I/O strip
 
 inline juce::RangedAudioParameter& ModuleComp::ctlParam (int ctlIdx)
 {
-    auto* p = proc.apvts.getParameter (SatkProcessor::paramID (mod, ctlIdx));
+    auto* p = proc.apvts.getParameter (SatkProcessor::paramID (target(), ctlIdx));
     jassert (p != nullptr);
     return *p;
 }
@@ -30,7 +31,7 @@ inline juce::RangedAudioParameter& ModuleComp::ctlParam (int ctlIdx)
 inline ButtonW* ModuleComp::addButton (int ctlIdx, float x, float y, const juce::String& tip, float r)
 {
     auto* b = new ButtonW (tip);
-    auto* modPtr = &mod;
+    auto* modPtr = &target();
     auto* procPtr = &proc;
     b->onPress = [procPtr, modPtr, ctlIdx] (bool down) { procPtr->setMomentary (modPtr, ctlIdx, down); };
     buttons.add (b);
@@ -43,9 +44,9 @@ inline TouchPadW* ModuleComp::addPad (int padCtlIdx, int stageIdx, float x, floa
                                       float wInches, float hInches, int pressureCtlIdx,
                                       const juce::String& tip)
 {
-    auto* modPtr = &mod;
+    auto* modPtr = &target();
     auto* procPtr = &proc;
-    auto* p = new TouchPadW (mod, stageIdx, tip,
+    auto* p = new TouchPadW (target(), stageIdx, tip,
         [procPtr, modPtr, padCtlIdx] (bool down) { procPtr->setMomentary (modPtr, padCtlIdx, down); },
         ctlParam (pressureCtlIdx));
     pads.add (p);
@@ -72,7 +73,7 @@ inline void buildNTO (ModuleComp& c)
     c.addJack (M::jSaw,  2.78f, 1.22f, "SAW",  true, jackTip (m, M::jSaw));
     c.addJack (M::jVar,   1.16f, 1.94f, "VAR",   true, jackTip (m, M::jVar));
     c.addJack (M::jPulse, 2.24f, 1.94f, "PULSE", true, jackTip (m, M::jPulse));
-    c.addLed (0, 1.70f, 1.94f, "Oscillator LED: pulses at the oscillator rate (visible at LFO speeds).", 0.10f);
+    c.addLed (0, 3.06f, 0.86f, "Oscillator LED: pulses at the oscillator rate (visible at LFO speeds).", 0.10f);
     // pitch section (1V/OCT pair, VC FREQ + attenuverter)
     c.addBox (0.14f, 2.52f, 1.60f, 1.92f);
     c.addLabel ("A", 0.55f, 2.60f, 0.3f, 0.115f);
@@ -169,7 +170,7 @@ inline void buildVCFQ (ModuleComp& c)
     c.addJack (M::jHp,    2.15f, 1.20f, "HIGH",  true, jackTip (m, M::jHp), 0.7f);
     c.addJack (M::jNotch, 0.75f, 1.94f, "NOTCH", true, jackTip (m, M::jNotch), 0.7f);
     c.addJack (M::jLp,    2.15f, 1.94f, "LOW",   true, jackTip (m, M::jLp), 0.7f);
-    c.addLed (0, 1.45f, 1.58f, "Filter LED: shows the band-pass output level.", 0.10f);
+    c.addLed (0, 2.56f, 0.86f, "Filter LED: shows the band-pass output level.", 0.10f);
     // inputs
     c.addJack (M::jIn,  0.75f, 2.86f, "IN", true, jackTip (m, M::jIn), 0.6f);
     c.addJack (M::jAgc, 2.15f, 2.86f, "AGC IN", true, jackTip (m, M::jAgc), 0.8f);
@@ -190,31 +191,78 @@ inline void buildVCFQ (ModuleComp& c)
     c.addLabel ("FREQ", 2.02f, 6.64f, 0.8f, 0.14f, true);
 }
 
-inline void buildNOISE (ModuleComp& c)
+inline void buildNoiseRvg (ModuleComp& c, satk::Module& noise)
 {
-    using M = satk::NOISE;
-    auto& m = c.mod;
-    c.addBox (0.14f, 0.66f, 1.02f, 3.62f);
-    c.addJack (M::jWhite, 0.65f, 1.16f, "WHITE", true, jackTip (m, M::jWhite), 0.9f);
-    c.addJack (M::jPink,  0.65f, 2.24f, "PINK",  true, jackTip (m, M::jPink), 0.9f);
-    c.addJack (M::jShSrc, 0.65f, 3.32f, "S/H SRC", true, jackTip (m, M::jShSrc), 0.95f);
-    c.addGlyph (Glyph::Saw, 0.65f, 4.02f, 0.34f, 0.18f);
-}
-
-inline void buildRVG (ModuleComp& c)
-{
+    c.titleText = "NOISE & RANDOM VOLTAGES";
+    {
+        using N = satk::NOISE;
+        c.use (&noise);
+        c.addBox (0.14f, 0.66f, 1.82f, 1.86f);
+        c.addLabel ("NOISE", 1.05f, 0.72f, 1.0f, 0.14f);
+        c.addJack (N::jWhite, 0.55f, 1.20f, "WHITE", true, jackTip (noise, N::jWhite), 0.8f);
+        c.addJack (N::jPink,  1.55f, 1.20f, "PINK",  true, jackTip (noise, N::jPink), 0.8f);
+        c.addJack (N::jShSrc, 0.55f, 2.02f, "S/H SRC", true, jackTip (noise, N::jShSrc), 0.9f);
+        c.addGlyph (Glyph::Saw, 1.45f, 2.02f, 0.40f, 0.20f);
+        c.use (nullptr);
+    }
     using M = satk::RVG;
     auto& m = c.mod;
-    c.addLed (0, 1.42f, 0.84f, "Random-clock LED: flashes on each internal clock pulse.", 0.09f);
-    c.addBox (0.14f, 0.66f, 1.42f, 2.30f);
-    c.addJack (M::jStepped, 0.50f, 1.22f, "STEPD", true, jackTip (m, M::jStepped), 0.62f);
-    c.addJack (M::jSmooth,  1.20f, 1.22f, "SMOOTH", true, jackTip (m, M::jSmooth), 0.68f);
-    c.addJack (M::jPulse, 0.50f, 2.24f, "PULSE", true, jackTip (m, M::jPulse), 0.62f);
-    c.addJack (M::jTrig,  1.20f, 2.24f, "TRIG", true, jackTip (m, M::jTrig), 0.6f);
-    c.addJack (M::jVcRate, 0.85f, 3.62f, "VC RATE", true, jackTip (m, M::jVcRate), 0.9f);
-    c.addLine (0.85f, 3.82f, 0.85f, 4.36f);
-    c.addKnob (M::cRate, 0.85f, 4.78f, true, false, {}, ctlTip (m, M::cRate));
-    c.addLabel ("RATE", 0.85f, 5.22f, 0.8f, 0.14f, true);
+    c.addBox (0.14f, 2.66f, 1.82f, 1.90f);
+    c.addLabel ("RANDOM", 1.05f, 2.72f, 1.0f, 0.14f);
+    c.addLed (0, 1.80f, 2.84f, "Random-clock LED: flashes on each internal clock pulse.", 0.09f);
+    c.addJack (M::jStepped, 0.55f, 3.18f, "STEPPED", true, jackTip (m, M::jStepped), 0.85f);
+    c.addJack (M::jSmooth,  1.55f, 3.18f, "SMOOTH",  true, jackTip (m, M::jSmooth), 0.85f);
+    c.addJack (M::jPulse,   0.55f, 4.02f, "PULSE",   true, jackTip (m, M::jPulse), 0.7f);
+    c.addJack (M::jTrig,    1.55f, 4.02f, "TRIG",    true, jackTip (m, M::jTrig), 0.7f);
+    c.addJack (M::jVcRate, 1.05f, 4.98f, "VC RATE", true, jackTip (m, M::jVcRate), 0.9f);
+    c.addLine (1.05f, 5.20f, 1.05f, 5.54f);
+    c.addKnob (M::cRate, 1.05f, 5.98f, true, false, {}, ctlTip (m, M::cRate));
+    c.addLabel ("RATE", 1.05f, 6.42f, 0.8f, 0.14f, true);
+}
+
+// VCA 1 + VCA 2 as one dual-VCA panel (cf. the Animal's dual-VCA UAP).
+inline void buildDualVca (ModuleComp& c, satk::Module& vca2)
+{
+    c.titleText = "DUAL VCA";
+    using M = satk::VCA;
+    satk::Module* chans[2] = { &c.mod, &vca2 };
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        auto& m = *chans[ch];
+        c.use (ch == 0 ? nullptr : &vca2);
+        const float x  = ch == 0 ? 0.63f : 1.67f;
+        const float bx = ch == 0 ? 0.14f : 1.18f;
+        c.addBox (bx, 0.66f, 0.98f, 6.00f);
+        c.addLabel (ch == 0 ? "1" : "2", x, 0.72f, 0.3f, 0.16f);
+        c.addJack (M::jIn, x, 1.22f, "IN", true, jackTip (m, M::jIn), 0.6f);
+        c.addJack (M::jVc, x, 2.20f, {}, true, jackTip (m, M::jVc));
+        c.addDiamond (x, 2.20f, 0.30f);
+        c.addLabel ("VC", x, 2.54f, 0.6f, 0.145f);
+        c.addKnob (M::cLevel, x, 3.30f, false, false, "LEVEL", ctlTip (m, M::cLevel));
+        c.addToggle (M::cResponse, x - 0.16f, 4.48f, 2, ctlTip (m, M::cResponse));
+        c.addLabel ("LIN", x + 0.20f, 4.30f, 0.4f, 0.14f);
+        c.addLabel ("EXP", x + 0.20f, 4.56f, 0.4f, 0.14f);
+        c.addLed (0, x, 5.44f, "VCA LED: shows the audio level leaving the VCA.", 0.09f);
+        c.addLine (x, 5.58f, x, 5.80f);
+        c.addJack (M::jOut, x, 6.02f, "OUT", true, jackTip (m, M::jOut), 0.6f);
+    }
+    c.use (nullptr);
+}
+
+// KEY/MIDI as the dark I/O strip along the bottom (PF50 house layout).
+inline void buildKeyStrip (ModuleComp& c)
+{
+    using M = satk::KEY;
+    auto& m = c.mod;
+    c.darkFace = true;
+    c.addLabel ("MIDI", 0.55f, 0.18f, 0.8f, 0.15f);
+    c.addJack (M::jKv,   0.55f, 0.48f, "1V/OCT", true, jackTip (m, M::jKv), 0.8f);
+    c.addJack (M::jGate, 1.35f, 0.48f, "GATE",   true, jackTip (m, M::jGate), 0.7f);
+    c.addJack (M::jVel,  2.15f, 0.48f, "VEL",    true, jackTip (m, M::jVel), 0.7f);
+    c.addJack (M::jClk,  2.95f, 0.48f, "CLK",    true, jackTip (m, M::jClk), 0.7f);
+    c.addKnob (M::cGlide, 3.85f, 0.42f, false, false, "GLIDE", ctlTip (m, M::cGlide));
+    c.addLed (0, 4.55f, 0.42f, "Gate LED: lit while a MIDI note is held.", 0.09f);
+    c.addLabel ("SERGE ANIMAL TKB  -  SOFTWARE RECREATION  -  RENKY DENK", c.wIn - 3.0f, 0.40f, 5.6f, 0.14f);
 }
 
 inline void buildDUSG (ModuleComp& c)
@@ -272,36 +320,6 @@ inline void buildSSG (ModuleComp& c)
     c.addLabel ("COUPLER", 1.60f, 6.24f, 1.1f, 0.135f);
 }
 
-inline void buildKEY (ModuleComp& c)
-{
-    using M = satk::KEY;
-    auto& m = c.mod;
-    c.addLed (0, 1.16f, 0.86f, "Gate LED: lit while a MIDI note is held.", 0.09f);
-    c.addBox (0.14f, 0.66f, 1.22f, 3.86f);
-    c.addJack (M::jKv, 0.75f, 1.22f, "KV", true, jackTip (m, M::jKv), 0.6f);
-    c.addLabel ("~1V/OCT", 0.75f, 1.60f, 0.8f, 0.115f);
-    c.addJack (M::jGate, 0.75f, 2.14f, "GATE", true, jackTip (m, M::jGate), 0.6f);
-    c.addJack (M::jVel,  0.75f, 3.04f, "VEL", true, jackTip (m, M::jVel), 0.6f);
-    c.addJack (M::jClk,  0.75f, 3.94f, "CLK", true, jackTip (m, M::jClk), 0.6f);
-    c.addKnob (M::cGlide, 0.75f, 5.10f, false, false, "GLIDE", ctlTip (m, M::cGlide));
-}
-
-inline void buildVCA (ModuleComp& c)
-{
-    using M = satk::VCA;
-    auto& m = c.mod;
-    c.addJack (M::jIn, 0.65f, 1.22f, "IN", true, jackTip (m, M::jIn), 0.6f);
-    c.addJack (M::jVc, 0.65f, 2.20f, "VC", true, jackTip (m, M::jVc), 0.6f);
-    c.addDiamond (0.65f, 2.20f, 0.30f);
-    c.addKnob (M::cLevel, 0.65f, 3.30f, false, false, "LEVEL", ctlTip (m, M::cLevel));
-    c.addToggle (M::cResponse, 0.52f, 4.52f, 2, ctlTip (m, M::cResponse));
-    c.addLabel ("LIN", 0.80f, 4.34f, 0.4f, 0.115f);
-    c.addLabel ("EXP", 0.80f, 4.62f, 0.4f, 0.115f);
-    c.addLed (0, 0.65f, 5.44f, "VCA LED: shows the audio level leaving the VCA.", 0.09f);
-    c.addLine (0.65f, 5.58f, 0.65f, 5.80f);
-    c.addJack (M::jOut, 0.65f, 6.02f, "OUT", true, jackTip (m, M::jOut), 0.6f);
-}
-
 inline void buildOUT (ModuleComp& c)
 {
     using M = satk::OUT;
@@ -315,7 +333,7 @@ inline void buildOUT (ModuleComp& c)
     c.addKnob (M::cPan2, 2.00f, 2.22f, false, true, "PAN 2", ctlTip (m, M::cPan2));
     // monitor bus
     c.addBox (0.14f, 3.10f, 2.42f, 1.66f);
-    c.addLabel ("MONITOR", 1.35f, 3.165f, 1.1f, 0.125f);
+    c.addLabel ("MONITOR", 1.35f, 3.19f, 1.1f, 0.14f);
     c.addChoice (M::cMonSrc, 1.35f, 3.66f, 2.05f, ctlTip (m, M::cMonSrc));
     c.addKnob (M::cMonLvl, 1.35f, 4.36f, false, false, "LEVEL", ctlTip (m, M::cMonLvl));
     // drift + master
@@ -330,82 +348,90 @@ inline void buildOUT (ModuleComp& c)
 // strip with 16 gold pads at the bottom.
 inline void buildTKB (ModuleComp& c)
 {
+    // Modeled on the Random*Source TKB panel: ONE 16-column grid shared by the
+    // top I/O jacks (outputs boxed, transport inputs after), the stage-pulse
+    // row, the 4x16 knob field and the touch keyboard. The software-only
+    // clock/mode controls (no hardware equivalent) live in a boxed block at
+    // the left edge so they don't break the hardware grid.
     using T = satk::TKB;
     auto& m = c.mod;
     const float w = c.wIn;
+    c.showTitle = false;
 
-    // ---- I/O row ----
-    c.addBox (0.20f, 0.62f, 4.15f, 1.00f);
-    const char* rowJ[5] = { "A", "B", "C", "D", "ABCD" };
-    for (int i = 0; i < 5; ++i)
-        c.addJack (T::jA + i, 0.60f + 0.80f * (float) i + (i == 4 ? 0.10f : 0.0f), 1.06f,
-                   rowJ[i], true, jackTip (m, T::jA + i), 0.7f);
-    c.addBox (4.55f, 0.62f, 3.30f, 1.00f);
-    c.addJack (T::jKv,       4.95f, 1.06f, "KV",    true, jackTip (m, T::jKv), 0.6f);
-    c.addJack (T::jPressure, 5.85f, 1.06f, "PRESS", true, jackTip (m, T::jPressure), 0.72f);
-    c.addJack (T::jGate,     6.65f, 1.06f, "GATE",  true, jackTip (m, T::jGate), 0.62f);
-    c.addJack (T::jKp,       7.40f, 1.06f, "KP",    true, jackTip (m, T::jKp), 0.5f);
-    c.addBox (8.10f, 0.62f, 5.70f, 1.00f);
-    struct InJ { int j; float x; const char* l1; const char* l2; };
-    const InJ ins[7] = {
-        { T::jClock,     8.50f,  "CLOCK", nullptr },
-        { T::jVertClock, 9.32f,  "VERT",  "CLOCK" },
-        { T::jReset,     10.14f, "RESET", nullptr },
-        { T::jVertReset, 10.96f, "VERT",  "RESET" },
-        { T::jRandom,    11.78f, "RANDOM", nullptr },
-        { T::jUpDown,    12.60f, "UP/DN", nullptr },
-        { T::jHold,      13.42f, "HOLD",  nullptr },
-    };
-    for (auto& ij : ins)
-    {
-        c.addJack (ij.j, ij.x, 1.02f, {}, true, jackTip (m, ij.j));
-        c.addLabel (ij.l1, ij.x, 1.22f, 0.78f, 0.115f);
-        if (ij.l2 != nullptr)
-            c.addLabel (ij.l2, ij.x, 1.355f, 0.78f, 0.115f);
-    }
+    // ---- left control block (software clock / mode) ----
+    c.addBox (0.18f, 0.40f, 1.42f, 5.72f);
+    c.addLabel ("CLOCK / MODE", 0.89f, 0.46f, 1.3f, 0.14f);
+    c.addToggle (T::cRun,    0.55f, 0.98f, 2, ctlTip (m, T::cRun));
+    c.addLabel ("RUN", 0.55f, 1.30f, 0.6f, 0.14f);
+    c.addToggle (T::cRandom, 1.23f, 0.98f, 2, ctlTip (m, T::cRandom));
+    c.addLabel ("RANDOM", 1.23f, 1.30f, 0.7f, 0.14f);
+    c.addKnob (T::cRate,    0.55f, 1.95f, false, false, "RATE",  ctlTip (m, T::cRate));
+    c.addKnob (T::cGateLen, 1.23f, 1.95f, false, false, "GATE",  ctlTip (m, T::cGateLen));
+    c.addKnob (T::cRange,   0.55f, 3.00f, false, false, "RANGE", ctlTip (m, T::cRange));
+    c.addKnob (T::cGlide,   1.23f, 3.00f, false, false, "GLIDE", ctlTip (m, T::cGlide));
+    c.addChoice (T::cLength, 0.89f, 4.30f, 1.10f, ctlTip (m, T::cLength), {});
+    c.addLabel ("LENGTH", 0.89f, 4.52f, 0.9f, 0.14f);
 
-    // ---- clock / mode controls ----
-    c.addToggle (T::cRun, 1.30f, 2.16f, 2, ctlTip (m, T::cRun));
-    c.addLabel ("RUN", 1.30f, 2.50f, 0.6f, 0.13f);
-    c.addKnob (T::cRate, 3.20f, 2.16f, false, false, "RATE", ctlTip (m, T::cRate));
-    c.addChoice (T::cLength, 5.10f, 2.16f, 1.0f, ctlTip (m, T::cLength), "LENGTH");
-    c.addToggle (T::cRandom, 7.00f, 2.16f, 2, ctlTip (m, T::cRandom));
-    c.addLabel ("RANDOM", 7.00f, 2.50f, 0.9f, 0.13f);
-    c.addKnob (T::cGateLen, 8.90f, 2.16f, false, false, "GATE", ctlTip (m, T::cGateLen));
-    c.addKnob (T::cRange, 10.80f, 2.16f, false, false, "RANGE", ctlTip (m, T::cRange));
-    c.addKnob (T::cGlide, 12.70f, 2.16f, false, false, "GLIDE", ctlTip (m, T::cGlide));
-
-    // ---- 16-column field ----
-    const float gx0 = 1.05f, gx1 = w - 0.15f;
+    // ---- the 16-column grid ----
+    const float gx0 = 2.30f, gx1 = w - 0.18f;
     const float pitch = (gx1 - gx0) / 16.0f;
     auto colX = [&] (int s) { return gx0 + pitch * ((float) s + 0.5f); };
-    // stage-pulse jacks with numbers (gold panel: red jack row 1..16)
+
+    // top row: 9 outputs (boxed, hardware order) + 7 transport inputs
+    struct TopJ { int j; const char* l1; const char* l2; };
+    const TopJ top[16] = {
+        { T::jAbcd, "ABCD", nullptr }, { T::jA, "A", nullptr }, { T::jB, "B", nullptr },
+        { T::jC, "C", nullptr },       { T::jD, "D", nullptr },
+        { T::jKv, "KEY", "VOLT" },     { T::jKp, "KEY", "PULSE" }, { T::jGate, "KEY", "GATE" },
+        { T::jPressure, "PRES-", "SURE" },
+        { T::jClock, "CLOCK", nullptr }, { T::jVertClock, "VERT", "CLOCK" },
+        { T::jReset, "RESET", nullptr }, { T::jVertReset, "VERT", "RESET" },
+        { T::jRandom, "RANDOM", nullptr }, { T::jUpDown, "UP/", "DOWN" }, { T::jHold, "HOLD", nullptr },
+    };
+    const float topY = 0.78f;
+    c.addBox (colX (0) - pitch * 0.48f, 0.40f, pitch * 8.96f, 1.02f);
     for (int s = 0; s < 16; ++s)
     {
-        c.addJack (T::jStage1 + s, colX (s), 3.10f, {}, true, jackTip (m, T::jStage1 + s));
-        c.addLabel (juce::String (s + 1), colX (s), 3.30f, 0.4f, 0.125f);
+        c.addJack (top[s].j, colX (s), topY, {}, true, jackTip (m, top[s].j));
+        c.addLabel (top[s].l1, colX (s), topY + 0.20f, pitch * 0.98f, 0.14f);
+        if (top[s].l2 != nullptr)
+            c.addLabel (top[s].l2, colX (s), topY + 0.37f, pitch * 0.98f, 0.14f);
     }
-    c.addLabel ("STAGE PULSES", 0.52f, 2.98f, 0.72f, 0.105f);
-    // knob rows with letters + row LEDs
+
+    // stage-pulse jacks 1..16, directly under the top row
+    for (int s = 0; s < 16; ++s)
+    {
+        c.addJack (T::jStage1 + s, colX (s), 1.80f, {}, true, jackTip (m, T::jStage1 + s));
+        c.addLabel (juce::String (s + 1), colX (s), 2.00f, 0.4f, 0.15f);
+    }
+
+    // knob rows A-D with letters + solid row lamps
     const char rowNames[4] = { 'A', 'B', 'C', 'D' };
     for (int r = 0; r < 4; ++r)
     {
-        const float y = 3.86f + (float) r * 0.60f;
-        c.addLabel (juce::String::charToString (rowNames[r]), 0.42f, y - 0.09f, 0.3f, 0.17f);
-        c.addLed (16 + r, 0.76f, y,
-                  "Row " + juce::String::charToString (rowNames[r])
-                  + " LED: lit while this row drives the ABCD output.", 0.09f);
+        const float y = 2.62f + (float) r * 0.58f;
+        c.addLabel (juce::String::charToString (rowNames[r]), gx0 - 0.20f, y - 0.10f, 0.3f, 0.18f);
+        auto* led = c.addLed (16 + r, gx0 - 0.48f, y,
+                              "Row " + juce::String::charToString (rowNames[r])
+                              + " LED: lit while this row drives the ABCD output.", 0.085f);
+        led->solid = true;
         for (int s = 0; s < 16; ++s)
         {
             const int ctl = T::cRowA1 + r * 16 + s;
             c.addKnob (ctl, colX (s), y, false, false, {}, ctlTip (m, ctl));
         }
     }
-    // touch keyboard: black strip + gold pads (pressure = click height)
-    c.addFill (0.24f, 6.00f, w - 0.48f, 0.92f, juce::Colour (0xff17150f));
+
+    // touch keyboard: full-width black strip, tall gold egg pads filling it
+    const float stripY = 5.04f, stripH = 1.08f;
+    c.addFill (gx0 - 0.62f, stripY, w - 0.18f - (gx0 - 0.62f), stripH, juce::Colour (0xff17150f));
     for (int s = 0; s < 16; ++s)
-        c.addPad (T::cPad1 + s, s, colX (s), 6.46f, juce::jmin (0.70f, pitch * 0.88f), 0.80f,
+        c.addPad (T::cPad1 + s, s, colX (s), stripY + stripH * 0.5f,
+                  juce::jmin (0.70f, pitch * 0.90f), stripH - 0.08f,
                   T::cPressure, ctlTip (m, T::cPad1 + s));
+
+    // panel title bottom-right, as on the R*S panel
+    c.addLabel ("TOUCH ACTIVATED KEYBOARD SEQUENCER", w - 2.75f, 6.18f, 5.2f, 0.17f);
 }
 
 inline void buildSkeleton (ModuleComp& c)
@@ -415,12 +441,11 @@ inline void buildSkeleton (ModuleComp& c)
     if (id == "vcm")   { buildVCM (c);   return; }
     if (id == "ring")  { buildRING (c);  return; }
     if (id == "vcfq")  { buildVCFQ (c);  return; }
-    if (id == "noise") { buildNOISE (c); return; }
-    if (id == "rvg")   { buildRVG (c);   return; }
+    if (id == "rvg")   { buildNoiseRvg (c, *c.proc.sys.noise); return; }
     if (id == "dusg1" || id == "dusg2") { buildDUSG (c); return; }
     if (id == "ssg")   { buildSSG (c);   return; }
-    if (id == "key")   { buildKEY (c);   return; }
-    if (id == "vca1" || id == "vca2")   { buildVCA (c); return; }
+    if (id == "key")   { buildKeyStrip (c); return; }
+    if (id == "vca1")  { buildDualVca (c, *c.proc.sys.vca2); return; }
     if (id == "out")   { buildOUT (c);   return; }
     if (id == "tkb")   { buildTKB (c);   return; }
 }
@@ -441,21 +466,21 @@ public:
             if (id == "ring")  return 1.7f;
             if (id == "vcfq")  return 2.9f;
             if (id == "noise") return 1.3f;
-            if (id == "rvg")   return 1.7f;
+            if (id == "rvg")   return 2.1f; // + NOISE
             if (id == "dusg1" || id == "dusg2") return 2.0f;
             if (id == "ssg")   return 3.2f;
             if (id == "key")   return 1.5f;
-            if (id == "vca1" || id == "vca2")   return 1.3f;
+            if (id == "vca1")  return 2.3f; // + VCA 2
             if (id == "out")   return 2.7f;
             return 2.0f;
         };
 
         const std::vector<std::vector<satk::Module*>> rows = {
-            { proc.sys.nto, proc.sys.vcm, proc.sys.ring, proc.sys.vcfq, proc.sys.noise, proc.sys.rvg },
-            { proc.sys.dusg1, proc.sys.dusg2, proc.sys.ssg, proc.sys.key, proc.sys.vca1, proc.sys.vca2, proc.sys.out },
+            { proc.sys.nto, proc.sys.vcm, proc.sys.ring, proc.sys.vcfq, proc.sys.rvg },        // rvg panel hosts NOISE
+            { proc.sys.dusg1, proc.sys.dusg2, proc.sys.ssg, proc.sys.vca1, proc.sys.out },     // vca1 panel hosts VCA 2
         };
         rowNames = { "ANIMAL - VOICE", "ANIMAL - CONTROL & OUTPUT",
-                     "TOUCH ACTIVATED KEYBOARD SEQUENCER" };
+                     "ANIMAL - TKB" };
 
         float maxRowIn = 0;
         for (auto& row : rows)
@@ -498,6 +523,18 @@ public:
             addAndMakeVisible (mc);
             mc->setTopLeftPosition (x + (int) (RAIL_IN * PX), y);
             y += mc->getHeight() + ROW_GAP;
+        }
+        // ---- dark I/O strip (KEY/MIDI), full width, PF50 style ----
+        {
+            const float wIn = maxRowIn;
+            const int x = (logicalW - (int) (maxRowIn * PX)) / 2;
+            auto* mc = new ModuleComp (*proc.sys.key, wIn, hostPtr, proc);
+            mc->setSize ((int) (wIn * PX), (int) (IO_H_IN * PX));
+            buildSkeleton (*mc);
+            mods.add (mc);
+            addAndMakeVisible (mc);
+            mc->setTopLeftPosition (x, y - ROW_GAP + 18);
+            y += mc->getHeight() + 10;
         }
         logicalH = y;
         setSize (logicalW, logicalH);
@@ -746,7 +783,7 @@ public:
         zoomBox.addItem ("Fit", kFitId);
         zoomBox.addSeparator();
         for (int pct : { 50, 75, 100, 125, 150, 200, 240 })
-            zoomBox.addItem (juce::String (pct) + " %", pct);
+            zoomBox.addItem ("ZOOM  " + juce::String (pct) + " %", pct);
         zoomBox.setTooltip ("Zoom: scales the panel (50-240%). Fit shows the whole panel in the window. "
                             "Cmd+scroll zooms toward the pointer; drag the window corner to any shape.");
         zoomBox.setColour (juce::ComboBox::backgroundColourId, col::headerBg.brighter (0.08f));
@@ -804,8 +841,10 @@ public:
     }
     void zoomToFit()
     {
-        setZoom (juce::jmin ((float) viewport.getWidth()  / (float) view.logicalW,
-                             (float) viewport.getHeight() / (float) view.logicalH));
+        // a hair under exact so the rounded-up content never exceeds the
+        // viewport by a pixel (which would bring the scrollbars back)
+        setZoom (0.999f * juce::jmin ((float) viewport.getWidth()  / (float) view.logicalW,
+                                      (float) viewport.getHeight() / (float) view.logicalH));
         viewport.setViewPosition (0, 0);
     }
     float getZoom() const noexcept { return zoom; }
@@ -824,7 +863,7 @@ public:
         auto r = getLocalBounds();
         auto header = r.removeFromTop (HEADER_H);
         clearBtn.setBounds (header.removeFromRight (104).reduced (6, 4));
-        zoomBox.setBounds (header.removeFromRight (124).reduced (6, 4));
+        zoomBox.setBounds (header.removeFromRight (150).reduced (6, 4));
         viewport.setBounds (r);
         proc.setEditorSize (getWidth(), getHeight()); // window size persists, zoom unchanged
     }
@@ -867,7 +906,7 @@ private:
         for (int step : { 50, 75, 100, 125, 150, 200, 240 })
             if (std::abs (pct - step) <= 1) { zoomBox.setSelectedId (step, juce::dontSendNotification); return; }
         zoomBox.setSelectedId (0, juce::dontSendNotification);
-        zoomBox.setTextWhenNothingSelected ("ZOOM " + juce::String (pct) + "%");
+        zoomBox.setTextWhenNothingSelected ("ZOOM  " + juce::String (pct) + " %");
     }
 
     SatkLookAndFeel lnf;
