@@ -12,6 +12,8 @@
 //   Nonlinearity      : fastTanh, ADAA1<K>, ADAA2<K>, TanhKernel, HardClipKernel
 //   Band-limiting     : polyBLEP, polyBLAMP
 //   Oversampling      : Upsampler2x, Downsampler2x, Oversampler2x (halfband FIR)
+//                       IirUpsampler2x, IirDownsampler2x (low-latency halfband,
+//                       amendment 2026-11-02 — see gauntlet/LOG.md)
 //   Mapping           : expmap, linmap, av
 #pragma once
 #include <algorithm>
@@ -384,6 +386,69 @@ struct Oversampler2x
         up.process (x, a, b);
         return down.process (nl (a), nl (b));
     }
+};
+
+// ----------------------------------------------------------------------
+// Low-latency 2x halfband (AMENDMENT 2026-11-02, logged in gauntlet/LOG.md).
+// Polyphase IIR allpass halfband (elliptic-derived, de Soras/HIIR design
+// formula): 8 coefficients, transition 0.04 -> stopband <= -99 dB, flat
+// passband to ~22 kHz at 48 kHz base rate. Round trip (up + down) adds only
+// ~3.6 base-rate samples of group delay (vs ~11 for the FIR pair above), at
+// the cost of non-linear phase near Nyquist. Use it for islands that sit
+// INSIDE patchable feedback loops (VCFQ), where loop latency detunes
+// self-oscillation; the FIR pair stays the default elsewhere.
+// H(z) = 0.5 * [A0(z^2) + z^-1 A1(z^2)], A0 = even coefs, A1 = odd coefs;
+// each A section at base rate: y = c*x + x1 - c*y1.
+namespace detail
+{
+    constexpr int kIirHbN = 8;
+    constexpr float kIirHbCoefs[kIirHbN] = {
+        0.0406334609242f, 0.1505051290227f, 0.3007570559919f, 0.4607745049615f,
+        0.6095243148962f, 0.7385038411189f, 0.8492238103921f, 0.9497427837050f };
+
+    template <int Offset> // 0 -> A0 (even coefs), 1 -> A1 (odd coefs)
+    struct AllpassChain
+    {
+        static constexpr int N = kIirHbN / 2;
+        float x1[N] {}, y1[N] {};
+        void reset() { for (int i = 0; i < N; ++i) x1[i] = y1[i] = 0.0f; }
+        float process (float x)
+        {
+            for (int i = 0; i < N; ++i)
+            {
+                const float c = kIirHbCoefs[2 * i + Offset];
+                const float y = c * (x - y1[i]) + x1[i];
+                x1[i] = x;
+                y1[i] = std::fabs (y) < 1.0e-15f ? 0.0f : y; // denormal-free
+                x = y1[i];
+            }
+            return x;
+        }
+    };
+} // namespace detail
+
+// One input sample -> two output samples at 2x rate (outA earlier).
+struct IirUpsampler2x
+{
+    detail::AllpassChain<0> a0;
+    detail::AllpassChain<1> a1;
+    void prepare() { reset(); }
+    void reset()   { a0.reset(); a1.reset(); }
+    void process (float x, float& outA, float& outB)
+    {
+        outA = a0.process (x); // 0.5 halfband gain x 2 zero-stuff gain = 1
+        outB = a1.process (x);
+    }
+};
+
+// Two input samples at 2x rate (a earlier, b later) -> one output sample.
+struct IirDownsampler2x
+{
+    detail::AllpassChain<0> a0;
+    detail::AllpassChain<1> a1;
+    void prepare() { reset(); }
+    void reset()   { a0.reset(); a1.reset(); }
+    float process (float a, float b) { return 0.5f * (a0.process (b) + a1.process (a)); }
 };
 
 // ======================================================================

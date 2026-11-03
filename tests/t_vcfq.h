@@ -251,16 +251,17 @@ inline void testPing()
 inline void testSelfOsc()
 {
     // BP -> IN self-oscillation patch: stable, amplitude-limited (integrator
-    // saturation), never NaN/Inf (GAUNTLET T07)
+    // saturation), never NaN/Inf (GAUNTLET T07). Run one patch, return BP.
+    auto runPatch = [] (double q, float gainCtl, std::vector<float>& bp, bool& finiteOk)
     {
         Rig r; auto* v = r.sys.vcfq;
-        r.sys.patch (v, VCFQ::jBp, v, VCFQ::jIn);         // the self-osc patch
+        r.sys.patch (v, VCFQ::jBp, v, VCFQ::jIn);            // the self-osc patch
         r.sys.patch (r.sys.key, KEY::jGate, v, VCFQ::jTrig); // ping to kick it
-        v->ctls[VCFQ::cQ].v    = qKnob (10.0);
-        v->ctls[VCFQ::cGain].v = 0.75f; // gain 1.5
+        v->ctls[VCFQ::cQ].v    = qKnob (q);
+        v->ctls[VCFQ::cGain].v = gainCtl;
         const int n = 48000;
-        std::vector<float> bp ((size_t) n);
-        bool finiteOk = true;
+        bp.assign ((size_t) n, 0.0f);
+        finiteOk = true;
         for (int i = 0; i < n; ++i)
         {
             r.sys.key->gateV = i < 480 ? kCV : 0.0f;
@@ -269,20 +270,48 @@ inline void testSelfOsc()
             if (! std::isfinite (s)) finiteOk = false;
             bp[(size_t) i] = s;
         }
-        float pA = 0.0f, pB = 0.0f; double rms = 0.0;
+    };
+    auto settled = [] (const std::vector<float>& bp, float& pA, float& pB, double& rms)
+    {
+        pA = pB = 0.0f; rms = 0.0;
         for (int i = 24000; i < 36000; ++i) pA = std::max (pA, std::fabs (bp[(size_t) i]));
         for (int i = 36000; i < 48000; ++i)
         { pB = std::max (pB, std::fabs (bp[(size_t) i])); rms += (double) bp[(size_t) i] * bp[(size_t) i]; }
         rms = std::sqrt (rms / 12000.0);
-        bool sustained = rms > 0.5;                     // it oscillates
-        bool limited   = pB <= 10.5f && pA <= 10.5f;    // saturation ceiling
-        bool stable    = pB > 0.8f * pA && pB < 1.25f * pA; // settled amplitude
-        CHECK (finiteOk && sustained && limited && stable,
-               "BP->IN self-osc stable, amplitude-limited, no NaN", pB, rms);
+        return rms > 0.5                                    // it oscillates
+            && pB <= 10.5f && pA <= 10.5f                   // saturation ceiling
+            && pB > 0.8f * pA && pB < 1.25f * pA;           // settled amplitude
+    };
+
+    // (a) the playable case: loop gain just over critical (Q 10, GAIN 0.13 ->
+    //     |loop| ~ 1.3 at fc). Hardware: "a nice round SINE" at fc; integrator
+    //     gain compression flattens the pitch slightly (dsp-techniques §2).
+    //     Rev-B amendment 2026-11-02 (LOG.md): was GAIN 1.5, a ~15x overdriven
+    //     loop that relaxation-oscillates far below fc on any 2-pole model.
+    {
+        std::vector<float> bp; bool finiteOk;
+        runPatch (10.0, 0.065f, bp, finiteOk);
+        float pA, pB; double rms;
+        const bool ok = settled (bp, pA, pB, rms);
+        CHECK (finiteOk && ok, "BP->IN self-osc (near-critical) stable, amplitude-limited, no NaN", pB, rms);
+        int zc = 0;
+        for (int i = 36001; i < 48000; ++i)
+            if (bp[(size_t) i - 1] < 0.0f && bp[(size_t) i] >= 0.0f) ++zc;
+        const double f = zc / 0.25;
         const double c  = goertzelBuf (bp, kFc, 36000, 12000);
         const double lo = goertzelBuf (bp, kFc * 0.5, 36000, 12000);
         const double hi = goertzelBuf (bp, kFc * 2.0, 36000, 12000);
-        CHECK (c > lo && c > hi, "self-osc frequency tracks fc (~800 Hz)", c);
+        CHECK (c > lo && c > hi && f > 0.85 * kFc && f < 1.02 * kFc,
+               "self-osc frequency tracks fc (0.85..1.02 x 800 Hz)", f, kFc);
+    }
+    // (b) overdriven: GAIN 1.5 (~15x loop gain). Pitch is free to collapse
+    //     (relaxation regime); it must stay stable, bounded and finite.
+    {
+        std::vector<float> bp; bool finiteOk;
+        runPatch (10.0, 0.75f, bp, finiteOk);
+        float pA, pB; double rms;
+        const bool ok = settled (bp, pA, pB, rms);
+        CHECK (finiteOk && ok, "BP->IN self-osc (overdriven) stable, amplitude-limited, no NaN", pB, rms);
     }
     // abuse: Q=60 via CV + gain 2 + rail-level drive + repeated pings + loop
     {

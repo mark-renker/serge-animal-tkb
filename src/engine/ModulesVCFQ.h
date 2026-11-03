@@ -3,6 +3,8 @@
 // forever). DSP: hero tier per gauntlet/research/dsp-techniques.md §1.4/§2 —
 // Zavalishin TPT/ZDF SVF running in a 2x-oversampled island with
 // per-integrator tanh saturation ("predict with linear solve, correct once"),
+// amplitude-dependent damping above 6 V (bounds self-osc with round waveform),
+// low-latency IIR halfbands (the island sits inside patch feedback loops),
 // input-stage soft clip, AGC input with a resistive-divider compensation law,
 // and a 0.5-1 ms diode-clipped shaped ping injected at the filter core
 // (independent of the GAIN/AGC input stages). Gate: T07.
@@ -120,9 +122,11 @@ private:
     static constexpr float kPiF      = 3.14159265f;
     static constexpr float kInClip   = 10.0f;    // input-stage soft clip (V)
     static constexpr float kIntClip  = 10.0f;    // integrator clip ~ ±10 V rails
-    static constexpr float kOutClip  = 11.0f;
-    static constexpr float kKnee     = 8.0f;     // state limiter: linear below (V)
-    static constexpr float kRail     = 10.0f;    // state limiter ceiling (V)    // output stage limit (< ±12 V rails)
+    static constexpr float kOutClip  = 11.0f;    // output stage limit (< ±12 V rails)
+    static constexpr float kDampKnee = 6.0f;     // amplitude-dependent damping onset (V)
+    static constexpr float kDamp     = 1.0f;     // extra damping slope above the knee
+    static constexpr float kKnee     = 10.0f;    // state safety limiter: linear below (V)
+    static constexpr float kRail     = 12.0f;    // state safety ceiling (V)
     static constexpr float kAgcQ0    = 2.0f;     // AGC divider constant (law above)
     static constexpr float kPingAmp  = 12.0f;    // pre-clip ping peak at PING LEVEL 1 (V)
     static constexpr float kPingClip = 3.5f;     // diode-clipped ping top (V)
@@ -173,12 +177,17 @@ private:
         const float bp = s1 + g * u1;
         const float u2 = satInt (bp);
         const float lp = s2 + g * u2;
-        const float hp = v0 - twoR * bp - lp; // corrected (== hpLin when linear)
+        // corrected hp (== hpLin when linear) plus amplitude-dependent damping:
+        // above kDampKnee the BP feedback grows, so an oscillating loop loses
+        // gain and settles there with the integrators still linear (pitch
+        // stays at fc, waveform stays round) instead of flat-topping
+        const float ab = std::fabs (bp);
+        const float extra = ab > kDampKnee ? kDamp * (bp > 0.0f ? ab - kDampKnee : kDampKnee - ab) : 0.0f;
+        const float hp = v0 - twoR * bp - extra - lp;
 
-        // trapezoidal state update; the states (integrator capacitor
-        // voltages) are knee-limited at the op-amp rails: exactly linear
-        // below kKnee (so Q / notch depth are untouched), soft above. This is
-        // what bounds a BP->IN self-oscillation loop in hardware.
+        // trapezoidal state update; states (integrator capacitor voltages)
+        // get a rail safety limiter — exactly linear below kKnee, so it never
+        // touches normal operation; the damping term above does the limiting.
         s1 = flushDenorm (railLimit (bp + g * satInt (hp)));
         s2 = flushDenorm (railLimit (lp + g * u2));
 
@@ -197,8 +206,8 @@ private:
     float fcK = 800.0f, qK = 2.0f, gainS = 1.0f, smoothK = 0.01f;
     float pingEnv = 0.0f, pingDecay = 0.96f;
     EdgeDetector trigEdge;
-    dsp::Upsampler2x   up;
-    dsp::Downsampler2x dnLp, dnBp, dnHp;
+    dsp::IirUpsampler2x   up;   // low-latency: the island sits inside patch feedback loops
+    dsp::IirDownsampler2x dnLp, dnBp, dnHp;
 };
 
 } // namespace satk

@@ -108,6 +108,53 @@ inline void runT00()
         bool toneOk = std::fabs (g.amp() - 1.0) < 0.012; // within ~0.1 dB
         CHECK (dcOk && toneOk, "halfband 2x: DC exact, 1 kHz within 0.1 dB", g.amp());
     }
+    // Low-latency IIR halfband pair (amendment 2026-11-02): unity DC, flat
+    // passband, image rejection on upsampling, round-trip latency < 5 samples
+    {
+        auto roundTrip = [] (double f, int n, int from)
+        {
+            dsp::IirUpsampler2x up; dsp::IirDownsampler2x dn; up.prepare(); dn.prepare();
+            Goertzel g; g.init (f);
+            for (int i = 0; i < n; ++i)
+            {
+                float a, b;
+                up.process ((float) std::sin (2.0 * 3.14159265358979 * f * i / SR), a, b);
+                const float y = dn.process (a, b);
+                if (i >= from) g.push (y);
+            }
+            return g.amp();
+        };
+        dsp::IirUpsampler2x up; dsp::IirDownsampler2x dn; up.prepare(); dn.prepare();
+        float y = 0.0f;
+        for (int i = 0; i < 4000; ++i) { float a, b; up.process (1.0f, a, b); y = dn.process (a, b); }
+        const bool dcOk = std::fabs (y - 1.0f) < 1e-4f;
+        const double a1k = roundTrip (1000.0, 9600, 1600), a18k = roundTrip (18000.0, 9600, 1600);
+        const bool flatOk = std::fabs (a1k - 1.0) < 0.012 && std::fabs (a18k - 1.0) < 0.012;
+        CHECK (dcOk && flatOk, "IIR halfband 2x: DC exact, 1k/18k within 0.1 dB", a1k, a18k);
+
+        // image of a 10 kHz tone in the 96 kHz stream sits at 48 - 10 = 38 kHz
+        dsp::IirUpsampler2x u2; u2.prepare();
+        Goertzel gs, gi; gs.init (10000.0 / 2.0); gi.init (38000.0 / 2.0); // Goertzel runs at SR: halve 2x-rate freqs
+        for (int i = 0; i < 9600; ++i)
+        {
+            float a, b;
+            u2.process ((float) std::sin (2.0 * 3.14159265358979 * 10000.0 * i / SR), a, b);
+            if (i >= 1600) { gs.push (a); gs.push (b); gi.push (a); gi.push (b); }
+        }
+        const double rej = 20.0 * std::log10 (gi.amp() / gs.amp());
+        CHECK (rej < -80.0, "IIR halfband 2x: upsampling image <= -80 dB", rej);
+
+        // round-trip latency: centroid of the impulse response (base samples)
+        dsp::IirUpsampler2x u3; dsp::IirDownsampler2x d3; u3.prepare(); d3.prepare();
+        double m0 = 0, m1 = 0;
+        for (int i = 0; i < 256; ++i)
+        {
+            float a, b; u3.process (i == 0 ? 1.0f : 0.0f, a, b);
+            const double h = d3.process (a, b);
+            m0 += h; m1 += h * i;
+        }
+        CHECK (m1 / m0 < 5.0, "IIR halfband 2x: round-trip latency < 5 samples", m1 / m0);
+    }
     // polyBLEP: band-limited 1975 Hz saw — strongest folded alias in 0-6 kHz
     // well under the naive saw's (utility sanity; the full -60 dBc floor is T03)
     {

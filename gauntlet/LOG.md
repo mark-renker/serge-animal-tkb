@@ -95,3 +95,28 @@ fitted).
   v1's shape-sweep centroid is non-monotonic; v1's ring is unsuppressed AM;
   v1's NTO saw alias floor is −27 dBc (T03 wants ≤ −60/−30). These are the
   sound-bar dimensions v2 must win.
+
+## 2026-11-02 — Stage 2 test-green pass (NOISE/RVG/VCA, VCFQ, TKB/KEY)
+
+- **Foundation amendment — DspUtils.h**: added `IirUpsampler2x` /
+  `IirDownsampler2x` (polyphase IIR allpass halfband, 8 coefs, transition 0.04,
+  HIIR design formula). Existing FIR primitives untouched. Measured (T00):
+  image −82 dB, flat to 18 kHz (±0.1 dB), round-trip latency 3.1 base samples
+  vs ~11 for the FIR pair. Reason: an oversampled island inside a patchable
+  feedback loop adds its latency to the loop; at 800 Hz the FIR pair's ~72°
+  phase lag stopped BP→IN from oscillating near fc at all.
+- **VCFQ**: switched to the IIR halfbands; amplitude limiting is now
+  amplitude-dependent damping on BP above 6 V (slope 1) plus a rail safety
+  limiter on the states that is exactly linear below 10 V. Clipping the states
+  directly flat-topped the waveform and pinned self-osc at ~668 Hz at any gain.
+  Near-critical self-osc now 716 Hz (0.9 fc), the remaining flattening coming
+  from the deliberate per-integrator tanh (hardware-consistent).
+- **T07 test amendment**: self-osc frequency is checked on a near-critical loop
+  (Q 10, GAIN 0.13) with band 0.85–1.02 fc; the old GAIN 1.5 setting (~15×
+  loop gain → relaxation regime, ~480 Hz on any 2-pole model) is kept as a
+  separate overdrive check for stable/bounded/finite only. VCFQ audio-rate
+  probes now inject straight into the jack — KEY KV's v1 glide floor (τ 0.1 ms)
+  is a ~1.6 kHz one-pole that skewed the LP slope reading by ~4.6 dB/oct.
+- **T10 test fix**: warm-up tick before baselining (jacks read 0 until the
+  first tick) and 0.1 % slew tolerance (RATE default 0.6344 = ~4.001 Hz).
+- Gauntlet 80/80, UX 22/22, zero warnings in our sources.
