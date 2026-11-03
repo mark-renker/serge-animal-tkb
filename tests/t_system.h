@@ -4,6 +4,8 @@
 //   T13 — feedback-stress scaffolding (full pathological patch lands with the
 //         stage-2 modules; the finite-within-rails checker is the reusable part)
 //   T14 — engine state round-trip incl. instance seed (bit-identical renders)
+//   T15 — default patch & monitor contract on the REAL modules (full voice
+//         KEY -> DUSG1 -> NTO var -> VCM mid -> VCFQ LP -> VCA1 -> OUT)
 //   T16 — perf measurement protocol (min-of-5 runs, cycles/sample) + stub-cost
 //         perf spike baseline
 #pragma once
@@ -336,6 +338,153 @@ inline void runT14()
     CHECK (derivDiffers, "different instance seed -> different module seeds");
 }
 
+// ---- T15 default patch & monitor (real modules, GAUNTLET T15) ---------------
+struct NoteRender { double rms = 0, peak = 0, tailPeak = 0; bool exactZero = true; };
+
+// Fresh rig with the frozen default cables; hold MIDI note 60 for `holdS`,
+// release, render `relS` more. tailPeak = peak over the last half of release.
+inline NoteRender renderNote60 (float velV, bool dropTrigger, double holdS = 1.0, double relS = 1.0)
+{
+    Rig r;
+    r.sys.patchDefaults();
+    if (dropTrigger)
+        r.sys.engine.disconnectAt (r.sys.engine.indexOf (r.sys.dusg1), DUSG::jTrig);
+    r.sys.key->pitchV = 0.0f; // note 60 = 0 V
+    r.sys.key->velV = velV;
+    NoteRender nr;
+    const int nH = (int) (SR * holdS), nR = (int) (SR * relS);
+    double sq = 0;
+    r.sys.key->gateV = 5.0f;
+    for (int i = 0; i < nH; ++i)
+    {
+        r.sys.engine.tick();
+        const float x = r.sys.out->outL, y = r.sys.out->outR;
+        sq += (double) x * x;
+        nr.peak = std::max (nr.peak, (double) std::fabs (x));
+        if (x != 0.0f || y != 0.0f) nr.exactZero = false;
+    }
+    r.sys.key->gateV = 0.0f;
+    for (int i = 0; i < nR; ++i)
+    {
+        r.sys.engine.tick();
+        const float x = r.sys.out->outL, y = r.sys.out->outR;
+        if (x != 0.0f || y != 0.0f) nr.exactZero = false;
+        if (i >= nR / 2) nr.tailPeak = std::max (nr.tailPeak, (double) std::max (std::fabs (x), std::fabs (y)));
+    }
+    nr.rms = std::sqrt (sq / nH);
+    return nr;
+}
+
+inline void runT15()
+{
+    GROUP ("T15 default patch & monitor bus (real modules)");
+
+    const NoteRender n = renderNote60 (4.0f, false);
+    std::printf ("  note 60, vel 4 V: rms(1 s) %.4f peak %.4f, tail %.2e  [SPEC loudness target ~0.07 / 0.37]\n",
+                 n.rms, n.peak, n.tailPeak);
+    CHECK (n.rms >= 0.02, "T15: default patch + note 60 -> RMS >= 0.02 within 1 s", n.rms, 0.02);
+    CHECK (n.tailPeak < 0.001, "T15: note-off -> decays below -60 dBFS", n.tailPeak, 0.001);
+    CHECK (n.peak <= 1.0, "T15: default voice stays inside full scale", n.peak, 1.0);
+
+    const NoteRender cut = renderNote60 (4.0f, true);
+    CHECK (cut.exactZero, "T15: DUSG1 trigger cable removed -> exact 0.0 output");
+
+    // velocity scales the final mix (v1 contract): 0 V -> silence, louder is louder
+    const NoteRender v0 = renderNote60 (0.0f, false);
+    const NoteRender vLo = renderNote60 (2.0f, false);
+    const NoteRender vHi = renderNote60 (5.0f, false);
+    CHECK (v0.exactZero, "T15: velocity 0 V -> exact 0.0 output");
+    const double ratio = vHi.rms / std::max (1e-12, vLo.rms);
+    std::printf ("  velocity 2 V rms %.4f, 5 V rms %.4f, ratio %.3f (linear law = 2.5)\n", vLo.rms, vHi.rms, ratio);
+    CHECK (ratio > 1.8 && ratio < 2.6, "T15: velocity scales the final mix (~linear, 2 V -> 5 V)", ratio, 2.5);
+
+    // determinism of the full voice (same seed -> bit-identical), drift on
+    {
+        const NoteRender a = renderNote60 (4.0f, false, 0.25, 0.0);
+        const NoteRender b = renderNote60 (4.0f, false, 0.25, 0.0);
+        CHECK (a.rms == b.rms && a.peak == b.peak, "T15: default voice renders bit-identically (same seed)");
+    }
+
+    // Monitor bus: with NO cables into the mixer, every monitor source must reach
+    // the output. A stimulus patch animates every source (static CVs would be
+    // removed by the output DC blocker, so each source is made to move).
+    auto stimulate = [] (Rig& r)
+    {
+        auto& s = r.sys;
+        s.patch (s.key,   KEY::jGate,    s.dusg1, DUSG::jTrig);
+        s.patch (s.key,   KEY::jGate,    s.dusg2, DUSG::jTrig);
+        s.patch (s.ssg,   SSG::jCycle,   s.ssg,   SSG::jSmIn);     // self-cycling smooth
+        s.patch (s.noise, NOISE::jWhite, s.ssg,   SSG::jStIn);
+        s.patch (s.rvg,   RVG::jPulse,   s.ssg,   SSG::jSample);
+        s.patch (s.noise, NOISE::jWhite, s.vcfq,  VCFQ::jIn);
+        s.patch (s.nto,   NTO::jSine,    s.vcm,   VCM::jTopIn);
+        s.patch (s.nto,   NTO::jSine,    s.vcm,   VCM::jMidIn1);
+        s.patch (s.nto,   NTO::jSine,    s.vcm,   VCM::jBotIn1);
+        s.patch (s.nto,   NTO::jSine,    s.ring,  RING::jX);
+        s.patch (s.nto,   NTO::jSaw,     s.ring,  RING::jY);
+        s.patch (s.nto,   NTO::jSine,    s.vca1,  VCA::jIn);
+        s.patch (s.nto,   NTO::jSaw,     s.vca2,  VCA::jIn);
+        s.patch (s.dusg1, DUSG::jOut,    s.vca1,  VCA::jVc);
+        s.patch (s.dusg2, DUSG::jOut,    s.vca2,  VCA::jVc);
+        s.patch (s.rvg,   RVG::jPulse,   s.tkb,   TKB::jVertClock);
+        s.ssg->ctls[SSG::cSmRate].v = 0.2f;   // fast smooth cycle
+        s.tkb->ctls[TKB::cRun].v = 1.0f;
+        s.tkb->ctls[TKB::cRate].v = 0.75f;    // ~7 Hz steps; 100 ms gate must toggle (DC is blocked)
+        for (int i = 0; i < 64; ++i)          // non-constant rows
+            s.tkb->ctls[(size_t) (TKB::cRowA1 + i)].v = (float) ((i * 37) % 16) / 15.0f;
+    };
+    auto pre = [] (Rig& r, int i)
+    {
+        auto& s = r.sys;
+        const int ph = i % 4800;               // 10 Hz note / pad cycle
+        const bool on = ph < 2400;
+        s.key->gateV = on ? 5.0f : 0.0f;
+        s.key->pitchV = ((i / 4800) % 2) ? 7.0f / 12.0f : 0.0f;
+        const int pad = (i / 4800) % 16;
+        for (int p = 0; p < 16; ++p) s.tkb->ctls[(size_t) (TKB::cPad1 + p)].v = (on && p == pad) ? 1.0f : 0.0f;
+        s.tkb->ctls[TKB::cPressure].v = on ? 0.3f + 0.6f * (float) ph / 2400.0f : 0.0f;
+    };
+
+    int audible = 0, deaf = 0; double quietest = 1e9; int quietestIdx = -1;
+    for (int src = 1; src < OUT::kNumMonitorSources; ++src)
+    {
+        Rig r;
+        stimulate (r);
+        r.sys.out->ctls[OUT::cMonSrc].v = (float) src;
+        r.sys.out->ctls[OUT::cMonLvl].v = 1.0f;
+        const int n = (int) SR; // 1 s
+        double sq = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            pre (r, i);
+            r.sys.engine.tick();
+            if (i >= n / 4) sq += (double) r.sys.out->outL * r.sys.out->outL;
+        }
+        const double rms = std::sqrt (sq / (n - n / 4));
+        if (rms > 1e-3) ++audible;
+        else { ++deaf; std::printf ("    monitor %2d '%s' rms %.2e (inaudible)\n", src, OUT::kMonitorSources[src], rms); }
+        if (rms < quietest) { quietest = rms; quietestIdx = src; }
+    }
+    std::printf ("  monitor: %d/%d sources audible; quietest #%d '%s' rms %.2e\n", audible,
+                 OUT::kNumMonitorSources - 1, quietestIdx,
+                 quietestIdx > 0 ? OUT::kMonitorSources[quietestIdx] : "-", quietest);
+    CHECK (deaf == 0, "T15: every monitor source is audible at the output (> -60 dBFS)",
+           (double) audible, (double) (OUT::kNumMonitorSources - 1));
+
+    // monitor OFF with no mixer cables -> exact silence
+    {
+        Rig r; stimulate (r);
+        r.sys.out->ctls[OUT::cMonSrc].v = 0.0f;
+        bool zero = true;
+        for (int i = 0; i < (int) (SR / 4); ++i)
+        {
+            pre (r, i); r.sys.engine.tick();
+            if (r.sys.out->outL != 0.0f || r.sys.out->outR != 0.0f) zero = false;
+        }
+        CHECK (zero, "T15: monitor OFF + no mixer cables -> exact 0.0");
+    }
+}
+
 inline void runT16()
 {
     GROUP ("T16 perf protocol (min-of-5 x 10 s; STUB-COST perf spike baseline)");
@@ -356,6 +505,7 @@ inline void run()
     runT01();
     runT13Scaffold();
     runT14();
+    runT15();
     runT16();
 }
 

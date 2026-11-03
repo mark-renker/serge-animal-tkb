@@ -350,3 +350,20 @@ UI review rounds 1–4 (blind critics, bar mean ≥ 4.0 ×2): 3.00/3.50,
 horizontal spread factor, NTO/VCF re-balanced, MONITOR as a rotary selector
 (SelectorW) instead of an on-panel dropdown, wide TKB pads filling the bar,
 grouped/dividered I/O strip.
+
+## 2026-11-03 — T15 on the real modules (tests/t_system.h)
+
+- T15 now runs on the full default voice (KEY → DUSG1 → NTO var → VCM mid →
+  VCFQ LP → VCA1 → OUT), replacing the per-builder surrogates as the gate.
+  Measured: note 60 @ vel 4 V → rms 0.0999 / peak 0.775 over 1 s (SPEC §1
+  loudness target ~0.07 / 0.37, NOT a gate — ~+6 dB hot, open item for Mark);
+  note-off tail exactly 0; DUSG1 trigger removed → exact 0.0; velocity 0 V →
+  exact 0.0; vel 2 V → 5 V rms ratio 2.18 (linear law 2.5, final tanh
+  compresses); same seed → bit-identical voice.
+- Monitor bus: with no mixer cables, a stimulus patch animates every source
+  and each of the 42 monitor sources must exceed −60 dBFS at the output
+  (quietest: TKB KV, 4.1e-3). Interpretation: "audible" for CV/gate sources
+  means a MOVING source is heard — the output DC blocker removes static CV by
+  design, so the stimulus keeps each source moving (TKB clock ~7 Hz so the
+  100 ms GATE actually toggles). Monitor OFF + no cables → exact 0.0.
+- Gauntlet 200/200.
