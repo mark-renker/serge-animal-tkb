@@ -195,7 +195,9 @@ inline void drawToggle (juce::Graphics& g, juce::Rectangle<float> r, int pos, in
     g.fillEllipse (juce::Rectangle<float> (nutR * 0.9f, nutR * 0.9f).withCentre (c0));
 
     const float t = nPos <= 1 ? 0.5f : (float) pos / (float) (nPos - 1); // 0 = up
-    const float len = r.getHeight() * 0.42f;
+    // lever + ball stay >= ~10 % inside the widget bounds in either position
+    // (the ball was being clipped at the edge in one throw)
+    const float len = r.getHeight() * 0.34f;
     const juce::Point<float> tip (c0.x, c0.y + (t - 0.5f) * 2.0f * len);
     if (std::abs (t - 0.5f) > 0.01f)
     {

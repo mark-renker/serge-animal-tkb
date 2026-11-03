@@ -164,6 +164,74 @@ private:
     std::unique_ptr<juce::ComboBoxParameterAttachment> att;
 };
 
+// Rotary source selector (replaces an on-panel dropdown: hardware panels use
+// rotary switches). Knob at left steps through the choices (drag / Option+wheel),
+// an engraved readout at right names the current one; clicking the readout
+// opens the full list for quick access.
+class SelectorW : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    SelectorW (juce::RangedAudioParameter& p, const juce::String& functionDescription)
+        : att (p, [this] (float v) { idx = (int) std::lround (v); repaint(); })
+    {
+        jassert (functionDescription.length() >= 15);
+        setTooltip (functionDescription);
+        if (auto* ch = dynamic_cast<juce::AudioParameterChoice*> (&p)) names = ch->choices;
+        else names = p.getAllValueStrings();
+        att.sendInitialUpdate();
+    }
+    void paint (juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat();
+        auto knob = b.removeFromLeft (b.getHeight()).reduced (1.0f);
+        const float v01 = names.size() > 1 ? (float) idx / (float) (names.size() - 1) : 0.0f;
+        drawKnob (g, knob, v01, false);
+        auto ro = b.reduced (b.getHeight() * 0.10f, b.getHeight() * 0.22f).withTrimmedLeft (b.getHeight() * 0.12f);
+        g.setColour (col::ioBg);
+        g.fillRoundedRectangle (ro, 2.5f);
+        g.setColour (col::ink.withAlpha (0.7f));
+        g.drawRoundedRectangle (ro, 2.5f, 1.0f);
+        g.setColour (col::ioInk);
+        g.setFont (panelFont (ro.getHeight() * 0.62f, true));
+        g.drawFittedText (names[idx], ro.reduced (4.0f, 0.0f).getSmallestIntegerContainer(),
+                          juce::Justification::centred, 1, 0.7f);
+    }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if ((float) e.x > (float) getHeight()) // readout: full list
+        {
+            juce::PopupMenu menu;
+            for (int i = 0; i < names.size(); ++i) menu.addItem (i + 1, names[i], true, i == idx);
+            menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
+                                [this] (int r) { if (r > 0) att.setValueAsCompleteGesture ((float) (r - 1)); });
+            dragging = false;
+            return;
+        }
+        dragging = true; startIdx = idx;
+        att.beginGesture();
+    }
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (! dragging) return;
+        const int n = juce::jlimit (0, names.size() - 1, startIdx - e.getDistanceFromDragStartY() / 8);
+        if (n != idx) att.setValueAsPartOfGesture ((float) n);
+    }
+    void mouseUp (const juce::MouseEvent&) override { if (dragging) att.endGesture(); dragging = false; }
+    void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+    {
+        if (! e.mods.isAltDown()) { juce::Component::mouseWheelMove (e, w); return; }
+        const int n = juce::jlimit (0, names.size() - 1, idx + (w.deltaY > 0 ? 1 : -1));
+        att.setValueAsCompleteGesture ((float) n);
+    }
+    juce::StringArray names;
+    int idx = 0;
+
+private:
+    juce::ParameterAttachment att;
+    int startIdx = 0;
+    bool dragging = false;
+};
+
 // TKB touch plate. Momentary (MomentaryFlag pattern: onTouch -> processor
 // setMomentary on the pad ctl), click height writes the shared PRESSURE ctl
 // parameter (0 at the pad's bottom edge, 1 at its top), and the pad lights up
@@ -261,6 +329,9 @@ public:
     static constexpr float kLayoutTop = 0.62f;
     float yK = 1.0f;
     float ty (float y) const { return y <= kLayoutTop ? y : kLayoutTop + (y - kLayoutTop) * yK; }
+    // horizontal spread: positions scale by xK so rows can match widths
+    float xK = 1.0f;
+    float tx (float x) const { return x * xK; }
     bool showTitle = true;                          // TKB carries its title bottom-right instead
     static constexpr float kMinLabelIn = 0.14f;     // smallest label height (inches)
 
@@ -273,7 +344,7 @@ public:
     JackW* addJack (int jackIdx, float x, float y, const juce::String& label,
                     bool small, const juce::String& tip, float labelW = 1.1f)
     {
-        y = ty (y);
+        y = ty (y); x = tx (x);
         auto* j = new JackW (target(), jackIdx, host, tip);
         jacks.add (j);
         addAndMakeVisible (j);
@@ -286,7 +357,7 @@ public:
     KnobW* addKnob (int ctlIdx, float x, float y, bool big, bool withScale,
                     const juce::String& label, const juce::String& tip, float rOverride = 0.0f)
     {
-        y = ty (y);
+        y = ty (y); x = tx (x);
         auto& pid = ctlParam (ctlIdx);
         auto* k = new KnobW (pid, big, tip);
         k->defaultVal = target().ctls[(size_t) ctlIdx].def;
@@ -302,7 +373,7 @@ public:
     }
     void addDiamond (float x, float y, float r = 0.34f)
     {
-        y = ty (y); // the bezel keeps its shape; only its centre moves
+        y = ty (y); x = tx (x); // the bezel keeps its shape; only its centre moves
         lines.push_back ({ x, y - r, x + r, y }); lines.push_back ({ x + r, y, x, y + r });
         lines.push_back ({ x, y + r, x - r, y }); lines.push_back ({ x - r, y, x, y - r });
     }
@@ -313,14 +384,14 @@ public:
         auto* j = addJack (jackIdx, x, y, {}, true, tip);
         addDiamond (x, y, 0.30f);
         if (label.isNotEmpty()) // fixed offset below the (unscaled) lower vertex
-            labels.push_back ({ label, { x - labelW / 2, ty (y) + 0.34f, labelW, 0.175f }, 0.145f, false });
+            labels.push_back ({ label, { tx (x) - labelW / 2, ty (y) + 0.34f, labelW, 0.175f }, 0.145f, false });
         return j;
     }
     std::vector<juce::Rectangle<float>> arches;
     ToggleW* addToggle (int ctlIdx, float x, float y, int n, const juce::String& tip,
                         const juce::String& label = {})
     {
-        y = ty (y);
+        y = ty (y); x = tx (x);
         auto* t = new ToggleW (ctlParam (ctlIdx), n, tip);
         toggles.add (t);
         addAndMakeVisible (t);
@@ -332,7 +403,7 @@ public:
     ChoiceW* addChoice (int ctlIdx, float x, float y, float wInches, const juce::String& tip,
                         const juce::String& label = {})
     {
-        y = ty (y);
+        y = ty (y); x = tx (x);
         auto* cb = new ChoiceW (ctlParam (ctlIdx), tip);
         choices.add (cb);
         addAndMakeVisible (cb);
@@ -341,12 +412,22 @@ public:
             labels.push_back ({ label, { x - 0.7f, y + 0.2f, 1.4f, 0.17f }, 0.15f, false });
         return cb;
     }
+    SelectorW* addSelector (int ctlIdx, float x, float y, float wInches, const juce::String& tip)
+    {
+        y = ty (y); x = tx (x);
+        auto* sw = new SelectorW (ctlParam (ctlIdx), tip);
+        selectors.add (sw);
+        addAndMakeVisible (sw);
+        sw->setBounds (pxr ({ x - wInches / 2, y - 0.25f, wInches, 0.50f }));
+        return sw;
+    }
+    juce::OwnedArray<SelectorW> selectors;
     ButtonW* addButton (int ctlIdx, float x, float y, const juce::String& tip, float r = 0.24f);
     TouchPadW* addPad (int padCtlIdx, int stageIdx, float x, float y,
                        float wInches, float hInches, int pressureCtlIdx, const juce::String& tip);
     LedW* addLed (int ledIdx, float x, float y, const juce::String& tip, float r = 0.13f)
     {
-        y = ty (y);
+        y = ty (y); x = tx (x);
         auto* l = new LedW (target(), ledIdx, tip);
         leds.add (l);
         addAndMakeVisible (l);
@@ -356,16 +437,18 @@ public:
     void addLabel (const juce::String& t, float x, float y, float w = 1.2f, float h = 0.15f, bool boxed = false)
     {
         h = juce::jmax (h, kMinLabelIn); // legibility floor at 100 % zoom
-        labels.push_back ({ t, { x - w / 2, ty (y), w, h + 0.03f }, h, boxed });
+        labels.push_back ({ t, { tx (x) - w / 2, ty (y), w, h + 0.03f }, h, boxed });
     }
     void addGlyph (Glyph gl, float x, float y, float w = 0.3f, float h = 0.2f)
     {
-        y = ty (y);
+        y = ty (y); x = tx (x);
         glyphs.push_back ({ { x - w / 2, y - h / 2, w, h }, gl });
     }
-    void addBox (float x, float y, float w, float h) { const float y0 = ty (y); boxes.push_back ({ x, y0, w, ty (y + h) - y0 }); }
-    void addLine (float x1, float y1, float x2, float y2) { lines.push_back ({ x1, ty (y1), x2, ty (y2) }); }
-    void addFill (float x, float y, float w, float h, juce::Colour c) { const float y0 = ty (y); fills.push_back ({ { x, y0, w, ty (y + h) - y0 }, c }); }
+    void addBox (float x, float y, float w, float h)
+    { const float x0 = tx (x), y0 = ty (y); boxes.push_back ({ x0, y0, tx (x + w) - x0, ty (y + h) - y0 }); }
+    void addLine (float x1, float y1, float x2, float y2) { lines.push_back ({ tx (x1), ty (y1), tx (x2), ty (y2) }); }
+    void addFill (float x, float y, float w, float h, juce::Colour c)
+    { const float x0 = tx (x), y0 = ty (y); fills.push_back ({ { x0, y0, tx (x + w) - x0, ty (y + h) - y0 }, c }); }
 
     void paint (juce::Graphics& g) override
     {

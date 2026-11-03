@@ -333,3 +333,20 @@ All islands use the low-latency IIR halfbands (feedback-loop rule above).
   now has the rail limiter that is linear below 10 V, and the check is kept as
   a module-level T13 contribution.
 - Gauntlet 120/120, UX 22/22, zero warnings in our sources.
+
+## 2026-11-03 — UI amendment: proportional window (supersedes 2026-11-02 free-shape)
+
+Mark, after trying the free-shape viewport: dragging the corner should zoom the
+panel, never leave blank space. Editor reverted to proportional scaling with a
+custom constrainer (height = panel × zoom + fixed header; vertical-only drags
+convert to width). ZOOM menu sets preset scales; Fit, scrolling, Cmd+wheel and
+drag-to-pan removed (nothing to scroll). Window size is no longer persisted
+separately (it follows the zoom); the opening zoom is capped to 92 % of screen
+height. U01/U02 rewritten (UX 23/23). Also: toggle lever shortened so its ball
+can't clip at the widget edge in either throw.
+
+UI review rounds 1–4 (blind critics, bar mean ≥ 4.0 ×2): 3.00/3.50,
+3.83/3.50, 3.67/3.83, 3.83/3.83. Round 5 fixes: rows equalised via a
+horizontal spread factor, NTO/VCF re-balanced, MONITOR as a rotary selector
+(SelectorW) instead of an on-panel dropdown, wide TKB pads filling the bar,
+grouped/dividered I/O strip.

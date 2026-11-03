@@ -1,7 +1,7 @@
 // Serge Animal TKB v2 — main panel view (two Animal rows + full-width TKB
 // strip), banana-cable interaction layer, zoom control, shared TooltipWindow,
-// and the plugin editor: free-shape window over a scrolling panel, independent
-// zoom (0.5x-2.4x); zoom and window size both persist (U01/U02).
+// and the plugin editor: proportional window whose corner drag zooms the panel
+// (0.5x-2.4x); the zoom persists (U01/U02).
 //
 // FOUNDATION SKELETON: module faces use a generic auto-layout (all jacks and
 // ctls placed on an inch grid with labels + tooltips) plus a hand-blocked TKB
@@ -39,7 +39,7 @@ inline ButtonW* ModuleComp::addButton (int ctlIdx, float x, float y, const juce:
     b->onPress = [procPtr, modPtr, ctlIdx] (bool down) { procPtr->setMomentary (modPtr, ctlIdx, down); };
     buttons.add (b);
     addAndMakeVisible (b);
-    b->setBounds (pxr (sq (x, ty (y), r)));
+    b->setBounds (pxr (sq (tx (x), ty (y), r)));
     return b;
 }
 
@@ -54,7 +54,7 @@ inline TouchPadW* ModuleComp::addPad (int padCtlIdx, int stageIdx, float x, floa
         ctlParam (pressureCtlIdx));
     pads.add (p);
     addAndMakeVisible (p);
-    p->setBounds (pxr ({ x - wInches / 2, ty (y) - hInches / 2, wInches, hInches }));
+    p->setBounds (pxr ({ tx (x) - wInches / 2, ty (y) - hInches / 2, wInches, hInches }));
     return p;
 }
 
@@ -99,11 +99,14 @@ inline void buildNTO (ModuleComp& c)
     c.addGlyph (Glyph::Sine,    1.02f, 5.48f, 0.32f, 0.16f);
     c.addGlyph (Glyph::PulseUp, 1.46f, 5.48f, 0.30f, 0.16f);
     c.addLine (1.20f, 5.40f, 1.20f, 5.56f);
-    // sync / fine / freq
-    c.addJack (M::jSync, 0.55f, 6.30f, "SYNC", true, jackTip (m, M::jSync), 0.7f);
-    c.addKnob (M::cFine, 1.55f, 6.22f, false, false, "FINE", ctlTip (m, M::cFine));
-    c.addKnob (M::cFreq, 2.68f, 6.16f, true, false, {}, ctlTip (m, M::cFreq));
-    c.addLabel ("FREQ", 2.68f, 6.60f, 0.8f, 0.14f, true);
+    // sync
+    c.addBox (0.14f, 6.06f, 1.60f, 0.80f);
+    c.addJack (M::jSync, 0.94f, 6.30f, "SYNC", true, jackTip (m, M::jSync), 0.7f);
+    // frequency section: FINE above the big FREQ knob
+    c.addBox (1.88f, 4.58f, 1.38f, 2.28f);
+    c.addKnob (M::cFine, 2.57f, 4.93f, false, false, "FINE", ctlTip (m, M::cFine));
+    c.addKnob (M::cFreq, 2.57f, 6.08f, true, false, {}, ctlTip (m, M::cFreq));
+    c.addLabel ("FREQ", 2.57f, 6.53f, 0.8f, 0.14f, true);
 }
 
 inline void buildVCM (ModuleComp& c)
@@ -139,7 +142,7 @@ inline void buildVCM (ModuleComp& c)
     c.addJack (M::jBotIn2, 1.50f, 5.50f, "IN 2", true, jackTip (m, M::jBotIn2), 0.6f);
     c.addJack (M::jBotOut, 2.45f, 5.50f, "OUT",  true, jackTip (m, M::jBotOut), 0.6f);
     c.addJack (M::jVcBot, 0.55f, 6.36f, "VC", true, jackTip (m, M::jVcBot), 0.6f);
-    c.addKnob (M::cBotDepth, 1.50f, 6.32f, false, false, "DEPTH", ctlTip (m, M::cBotDepth));
+    c.addKnob (M::cBotDepth, 1.50f, 6.26f, false, false, "DEPTH", ctlTip (m, M::cBotDepth));
     c.addGlyph (Glyph::PulseUp, 2.14f, 6.12f, 0.28f, 0.15f);
     c.addJack (M::jBotSq, 2.45f, 6.36f, "SQ OUT", true, jackTip (m, M::jBotSq), 0.72f);
 }
@@ -186,19 +189,21 @@ inline void buildVCFQ (ModuleComp& c)
     c.addKnob (M::cGain, 0.60f, 3.88f, false, false, "GAIN", ctlTip (m, M::cGain));
     c.addKnob (M::cPing, 1.45f, 3.88f, false, false, "PING", ctlTip (m, M::cPing));
     c.addJack (M::jTrig, 2.30f, 3.88f, "TRIG IN", true, jackTip (m, M::jTrig), 0.8f);
-    // CV row: VC Q / 1V/OCT / VC F, each attenuverter directly below its jack
-    c.addJack (M::jVcQ, 0.40f, 4.78f, "VC Q", true, jackTip (m, M::jVcQ), 0.62f);
-    c.addJack (M::jOct, 1.45f, 4.78f, "1V/OCT", true, jackTip (m, M::jOct), 0.75f);
-    c.addJack (M::jVcF, 2.50f, 4.78f, "VC F", true, jackTip (m, M::jVcF), 0.62f);
-    // bottom row: VC Q amt | big Q | big FREQ | VC F amt
-    c.addKnob (M::cVcQAmt, 0.40f, 6.00f, false, false, {}, ctlTip (m, M::cVcQAmt));
-    c.addLabel (juce::CharPointer_UTF8 ("\xc2\xb1"), 0.40f, 6.32f, 0.3f, 0.15f); // attenuverter
-    c.addKnob (M::cQ, 1.00f, 6.00f, true, false, {}, ctlTip (m, M::cQ));
-    c.addLabel ("Q", 1.00f, 6.42f, 0.5f, 0.14f, true);
-    c.addKnob (M::cFreq, 1.90f, 6.00f, true, false, {}, ctlTip (m, M::cFreq));
-    c.addLabel ("FREQ", 1.90f, 6.42f, 0.8f, 0.14f, true);
-    c.addKnob (M::cVcFAmt, 2.50f, 6.00f, false, false, {}, ctlTip (m, M::cVcFAmt));
-    c.addLabel (juce::CharPointer_UTF8 ("\xc2\xb1"), 2.50f, 6.32f, 0.3f, 0.15f);
+    // CV row: VC Q jack -> attenuverter | 1V/OCT | attenuverter <- VC F jack
+    c.addJack (M::jVcQ, 0.38f, 4.80f, "VC Q", true, jackTip (m, M::jVcQ), 0.62f);
+    c.addLine (0.56f, 4.80f, 0.68f, 4.80f);
+    c.addKnob (M::cVcQAmt, 0.94f, 4.80f, false, false, {}, ctlTip (m, M::cVcQAmt));
+    c.addLabel (juce::CharPointer_UTF8 ("\xc2\xb1"), 0.94f, 5.10f, 0.3f, 0.15f); // attenuverter
+    c.addJack (M::jOct, 1.45f, 4.80f, "1V/OCT", true, jackTip (m, M::jOct), 0.62f);
+    c.addKnob (M::cVcFAmt, 1.96f, 4.80f, false, false, {}, ctlTip (m, M::cVcFAmt));
+    c.addLabel (juce::CharPointer_UTF8 ("\xc2\xb1"), 1.96f, 5.10f, 0.3f, 0.15f);
+    c.addLine (2.22f, 4.80f, 2.34f, 4.80f);
+    c.addJack (M::jVcF, 2.52f, 4.80f, "VC F", true, jackTip (m, M::jVcF), 0.62f);
+    // big Q / FREQ
+    c.addKnob (M::cQ, 0.85f, 6.02f, true, false, {}, ctlTip (m, M::cQ));
+    c.addLabel ("Q", 0.85f, 6.44f, 0.5f, 0.14f, true);
+    c.addKnob (M::cFreq, 2.05f, 6.02f, true, false, {}, ctlTip (m, M::cFreq));
+    c.addLabel ("FREQ", 2.05f, 6.44f, 0.8f, 0.14f, true);
 }
 
 inline void buildNoiseRvg (ModuleComp& c, satk::Module& noise)
@@ -212,7 +217,6 @@ inline void buildNoiseRvg (ModuleComp& c, satk::Module& noise)
         c.addJack (N::jWhite, 0.55f, 1.20f, "WHITE", true, jackTip (noise, N::jWhite), 0.8f);
         c.addJack (N::jPink,  1.55f, 1.20f, "PINK",  true, jackTip (noise, N::jPink), 0.8f);
         c.addJack (N::jShSrc, 0.55f, 2.02f, "S/H SRC", true, jackTip (noise, N::jShSrc), 0.9f);
-        c.addGlyph (Glyph::Saw, 1.45f, 2.02f, 0.40f, 0.20f);
         c.use (nullptr);
     }
     using M = satk::RVG;
@@ -269,28 +273,31 @@ inline void buildKeyStrip (ModuleComp& c, satk::Module& tkb)
     using M = satk::KEY;
     auto& m = c.mod;
     c.darkFace = true;
-    c.addLabel ("MIDI", 1.68f, 0.03f, 1.0f, 0.14f);
+    c.addLabel ("MIDI KEYBOARD", 1.95f, 0.03f, 2.0f, 0.14f);
     c.addJack (M::jKv,   0.55f, 0.46f, "1V/OCT", true, jackTip (m, M::jKv), 0.8f);
-    c.addJack (M::jGate, 1.30f, 0.46f, "GATE",   true, jackTip (m, M::jGate), 0.7f);
-    c.addLed (0, 1.60f, 0.46f, "Gate LED: lit while a MIDI note is held.", 0.08f);
-    c.addJack (M::jVel,  2.05f, 0.46f, "VEL",    true, jackTip (m, M::jVel), 0.7f);
-    c.addJack (M::jClk,  2.80f, 0.46f, "CLK",    true, jackTip (m, M::jClk), 0.7f);
-    c.addKnob (M::cGlide, 3.55f, 0.42f, false, false, "PORTA", ctlTip (m, M::cGlide), 0.21f);
+    c.addJack (M::jGate, 1.25f, 0.46f, "GATE",   true, jackTip (m, M::jGate), 0.7f);
+    c.addLed (0, 1.50f, 0.30f, "Gate LED: lit while a MIDI note is held.", 0.07f);
+    c.addJack (M::jVel,  1.95f, 0.46f, "VEL",    true, jackTip (m, M::jVel), 0.7f);
+    c.addJack (M::jClk,  2.65f, 0.46f, "CLK",    true, jackTip (m, M::jClk), 0.7f);
+    c.addKnob (M::cGlide, 3.35f, 0.42f, false, false, "PORTA", ctlTip (m, M::cGlide), 0.21f);
+    c.addLine (3.85f, 0.10f, 3.85f, 0.90f);
 
     using T = satk::TKB;
     c.use (&tkb);
-    c.addLabel ("SEQUENCER CLOCK / MODE", 7.15f, 0.03f, 4.0f, 0.14f);
-    c.addToggle (T::cRun,    4.75f, 0.42f, 2, ctlTip (tkb, T::cRun));
-    c.addLabel ("RUN", 4.75f, 0.67f, 0.6f, 0.14f);
-    c.addToggle (T::cRandom, 5.45f, 0.42f, 2, ctlTip (tkb, T::cRandom));
-    c.addLabel ("RANDOM", 5.45f, 0.67f, 0.7f, 0.14f);
-    c.addKnob (T::cRate,    6.25f, 0.42f, false, false, "RATE",  ctlTip (tkb, T::cRate), 0.21f);
-    c.addKnob (T::cGateLen, 7.00f, 0.42f, false, false, "GATE",  ctlTip (tkb, T::cGateLen), 0.21f);
-    c.addKnob (T::cRange,   7.75f, 0.42f, false, false, "RANGE", ctlTip (tkb, T::cRange), 0.21f);
-    c.addKnob (T::cGlide,   8.50f, 0.42f, false, false, "GLIDE", ctlTip (tkb, T::cGlide), 0.21f);
-    c.addChoice (T::cLength, 9.45f, 0.42f, 0.95f, ctlTip (tkb, T::cLength), {});
-    c.addLabel ("LENGTH", 9.45f, 0.67f, 0.9f, 0.14f);
+    const float sx[7] = { 4.35f, 5.10f, 5.85f, 6.60f, 7.35f, 8.10f, 9.00f };
+    c.addLabel ("SEQUENCER CLOCK / MODE", (sx[0] + sx[6]) * 0.5f, 0.03f, 4.0f, 0.14f);
+    c.addToggle (T::cRun,    sx[0], 0.42f, 2, ctlTip (tkb, T::cRun));
+    c.addLabel ("RUN", sx[0], 0.67f, 0.6f, 0.14f);
+    c.addToggle (T::cRandom, sx[1], 0.42f, 2, ctlTip (tkb, T::cRandom));
+    c.addLabel ("RANDOM", sx[1], 0.67f, 0.7f, 0.14f);
+    c.addKnob (T::cRate,    sx[2], 0.42f, false, false, "RATE",  ctlTip (tkb, T::cRate), 0.21f);
+    c.addKnob (T::cGateLen, sx[3], 0.42f, false, false, "GATE",  ctlTip (tkb, T::cGateLen), 0.21f);
+    c.addKnob (T::cRange,   sx[4], 0.42f, false, false, "RANGE", ctlTip (tkb, T::cRange), 0.21f);
+    c.addKnob (T::cGlide,   sx[5], 0.42f, false, false, "GLIDE", ctlTip (tkb, T::cGlide), 0.21f);
+    c.addChoice (T::cLength, sx[6], 0.42f, 0.85f, ctlTip (tkb, T::cLength), {});
+    c.addLabel ("LENGTH", sx[6], 0.67f, 0.9f, 0.14f);
     c.use (nullptr);
+    c.addLine (9.75f, 0.10f, 9.75f, 0.90f);
 
     c.addLabel ("SERGE ANIMAL TKB", c.wIn - 1.55f, 0.30f, 2.6f, 0.15f);
     c.addLabel ("SOFTWARE RECREATION  -  RENKY DENK", c.wIn - 1.55f, 0.52f, 2.6f, 0.14f);
@@ -367,7 +374,7 @@ inline void buildOUT (ModuleComp& c)
     // monitor bus
     c.addBox (0.14f, 3.20f, 2.42f, 1.96f);
     c.addLabel ("MONITOR", 1.35f, 3.26f, 1.1f, 0.14f);
-    c.addChoice (M::cMonSrc, 1.35f, 3.76f, 2.05f, ctlTip (m, M::cMonSrc));
+    c.addSelector (M::cMonSrc, 1.35f, 3.80f, 2.15f, ctlTip (m, M::cMonSrc));
     c.addKnob (M::cMonLvl, 1.35f, 4.50f, false, false, "LEVEL", ctlTip (m, M::cMonLvl));
     // drift + master
     c.addBox (0.14f, 5.30f, 2.42f, 1.56f);
@@ -444,10 +451,10 @@ inline void buildTKB (ModuleComp& c)
 
     // touch keyboard: black strip, pads cut flat by its lower edge
     const float stripY = 4.92f, stripH = 1.12f;
-    c.addFill (0.18f, stripY, w - 0.36f, stripH, juce::Colour (0xff17150f));
+    c.addFill (colX (0) - pitch * 0.5f - 0.04f, stripY, pitch * 16.0f + 0.08f, stripH, juce::Colour (0xff17150f));
     for (int s = 0; s < 16; ++s)
         c.addPad (T::cPad1 + s, s, colX (s), stripY + 0.06f + (stripH - 0.06f) * 0.5f,
-                  juce::jmin (0.72f, pitch * 0.82f), stripH - 0.06f,
+                  pitch * 0.94f, stripH - 0.06f,
                   T::cPressure, ctlTip (m, T::cPad1 + s));
 
     c.addLabel ("TOUCH ACTIVATED KEYBOARD SEQUENCER", w - 2.75f, 6.12f, 5.2f, 0.17f);
@@ -483,7 +490,7 @@ public:
             if (id == "nto")   return 3.4f;
             if (id == "vcm")   return 3.0f;
             if (id == "ring")  return 1.7f;
-            if (id == "vcfq")  return 2.9f;
+            if (id == "vcfq")  return 3.2f; // authored at 2.9 (see authoredWidthOf)
             if (id == "noise") return 1.3f;
             if (id == "rvg")   return 2.1f; // + NOISE
             if (id == "dusg1" || id == "dusg2") return 2.0f;
@@ -494,6 +501,12 @@ public:
             return 2.0f;
         };
 
+        // panels authored narrower than they are shown (layout spreads to fit)
+        auto authoredWidthOf = [&] (satk::Module* m) -> float
+        {
+            if (m->id == "vcfq") return 2.9f;
+            return widthOf (m);
+        };
         const std::vector<std::vector<satk::Module*>> rows = {
             { proc.sys.nto, proc.sys.vcm, proc.sys.ring, proc.sys.vcfq, proc.sys.rvg },        // rvg panel hosts NOISE
             { proc.sys.dusg1, proc.sys.dusg2, proc.sys.ssg, proc.sys.vca1, proc.sys.out },     // vca1 panel hosts VCA 2
@@ -508,20 +521,29 @@ public:
             for (auto* m : row) w += widthOf (m);
             maxRowIn = std::max (maxRowIn, w);
         }
+        // narrower rows spread horizontally so every boat is the same width
+        auto rowSpread = [&] (const std::vector<satk::Module*>& row)
+        {
+            float inner = 0;
+            for (auto* m : row) inner += widthOf (m);
+            return (maxRowIn - 2 * RAIL_IN) / inner;
+        };
         logicalW = (int) std::ceil (maxRowIn * PX) + 20;
         int y = 14; // header is pinned by the editor, outside the scrolling panel
         for (auto& row : rows)
         {
+            const float spread = rowSpread (row);
             float rowWIn = 2 * RAIL_IN;
-            for (auto* m : row) rowWIn += widthOf (m);
+            for (auto* m : row) rowWIn += widthOf (m) * spread;
             int x = (logicalW - (int) (rowWIn * PX)) / 2;
             juce::Rectangle<int> rr (x, y, (int) (rowWIn * PX), (int) (MOD_H * PX));
             rowRects.push_back (rr);
             x += (int) (RAIL_IN * PX);
             for (auto* m : row)
             {
-                auto* mc = new ModuleComp (*m, widthOf (m), hostPtr, proc);
+                auto* mc = new ModuleComp (*m, widthOf (m) * spread, hostPtr, proc);
                 mc->yK = kRowPack;
+                mc->xK = spread * widthOf (m) / authoredWidthOf (m);
                 buildSkeleton (*mc);
                 mods.add (mc);
                 addAndMakeVisible (mc);
@@ -656,23 +678,7 @@ public:
         });
     }
 
-    // ---- drag on empty panel space pans the viewport (editor installs onPan;
-    // deltas are in SCREEN pixels so panning feels 1:1 at any zoom) ----
-    void mouseDown (const juce::MouseEvent& e) override
-    {
-        lastPanPos = e.getScreenPosition();
-        setMouseCursor (juce::MouseCursor::DraggingHandCursor);
-    }
-    void mouseDrag (const juce::MouseEvent& e) override
-    {
-        const auto p = e.getScreenPosition();
-        if (onPan) onPan (p - lastPanPos);
-        lastPanPos = p;
-    }
-    void mouseUp (const juce::MouseEvent&) override { setMouseCursor (juce::MouseCursor::NormalCursor); }
-
     int logicalW = 980, logicalH = 1200;
-    std::function<void (juce::Point<int>)> onPan;
 
     juce::OwnedArray<ModuleComp> mods;
 
@@ -746,31 +752,36 @@ private:
     JackW* dragSrc = nullptr;
     juce::Point<float> dragPos;
     int lastCableVer = -1;
-    juce::Point<int> lastPanPos;
 };
 
 // --------------------------------------------------------------------------
-// Editor: free-shape window + independent zoom (amendment 2026-11-02, LOG.md).
-//   - the WINDOW resizes to any shape (corner drag); it is a viewport onto the
-//     panel and never changes the zoom;
-//   - ZOOM (menu, or Cmd+wheel toward the pointer) scales the panel only;
-//     "Fit" picks the zoom that shows the whole panel in the current window;
-//   - wheel/trackpad scrolls, dragging empty panel space pans;
-//   - header (title, zoom, CLEAR) is pinned above the scrolling panel;
-//   - zoom (editorScale) and window size (editorW/H) persist in plugin state.
-class ZoomViewport : public juce::Viewport
+// Editor: proportional window (amendment 2026-11-03, LOG.md — supersedes the
+// free-shape viewport of 2026-11-02 at Mark's request: dragging the corner
+// should zoom, never leave blank space).
+//   - corner drag scales the whole panel; the window keeps the panel's
+//     proportions (height = panel height x zoom + the fixed header);
+//   - the ZOOM menu sets the window to a preset scale (50-240 %);
+//   - zoom (editorScale) persists in plugin state; the window size follows.
+class PanelConstrainer : public juce::ComponentBoundsConstrainer
 {
 public:
-    std::function<void (float factor, juce::Point<int> posInViewport)> onCmdWheel;
-    void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+    int logicalW = 1, logicalH = 1, headerH = 0;
+    float minZ = 0.5f, maxZ = 2.4f;
+    int heightFor (int w) const { return (int) std::lround ((float) w * (float) logicalH / (float) logicalW) + headerH; }
+    void checkBounds (juce::Rectangle<int>& bounds, const juce::Rectangle<int>& previous,
+                      const juce::Rectangle<int>& /*limits*/, bool isStretchingTop, bool isStretchingLeft,
+                      bool isStretchingBottom, bool isStretchingRight) override
     {
-        if (e.mods.isCommandDown() && onCmdWheel)
-        {
-            const float dy = w.deltaY != 0.0f ? w.deltaY : w.deltaX;
-            onCmdWheel (std::pow (2.0f, dy * 0.6f), e.getEventRelativeTo (this).getPosition());
-            return;
-        }
-        juce::Viewport::mouseWheelMove (e, w);
+        // width drives the zoom; a purely vertical drag converts to a width
+        const bool vertOnly = (isStretchingTop || isStretchingBottom) && ! (isStretchingLeft || isStretchingRight);
+        int w = vertOnly ? (int) std::lround ((float) (bounds.getHeight() - headerH) * (float) logicalW / (float) logicalH)
+                         : bounds.getWidth();
+        w = juce::jlimit ((int) std::lround ((float) logicalW * minZ), (int) std::lround ((float) logicalW * maxZ), w);
+        const int h = heightFor (w);
+        // keep the edge opposite the one being dragged fixed
+        const int x = isStretchingLeft ? previous.getRight() - w : bounds.getX();
+        const int y = isStretchingTop  ? previous.getBottom() - h : bounds.getY();
+        bounds = { x, y, w, h };
     }
 };
 
@@ -778,34 +789,23 @@ class SatkEditor : public juce::AudioProcessorEditor
 {
 public:
     static constexpr float kMinScale = 0.5f, kMaxScale = 2.4f; // zoom range
-    static constexpr int   kMinW = 420, kMinH = 300;           // smallest window
-    static constexpr int   kFitId = 1;                         // zoom-menu id of "Fit"
 
     explicit SatkEditor (SatkProcessor& p) : AudioProcessorEditor (p), proc (p), view (p)
     {
-        // capture persisted state BEFORE installing size limits (setResizeLimits
-        // fires resized() on the initial 0x0 bounds)
-        const float z0 = juce::jlimit (kMinScale, kMaxScale, proc.getEditorScale());
-        int w0 = proc.getEditorW(), h0 = proc.getEditorH();
+        // capture the persisted zoom BEFORE installing the constrainer (setting
+        // limits fires resized() on the initial 0x0 bounds)
+        float z0 = juce::jlimit (kMinScale, kMaxScale, proc.getEditorScale());
+        if (auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) // never open taller than the screen
+            z0 = juce::jmax (kMinScale, juce::jmin (z0, ((float) d->userArea.getHeight() * 0.92f - (float) HEADER_H)
+                                                         / (float) view.logicalH));
 
         setLookAndFeel (&lnf);
+        addAndMakeVisible (view);
 
-        holder.addAndMakeVisible (view);
-        viewport.setViewedComponent (&holder, false);
-        viewport.setScrollBarsShown (true, true);
-        viewport.setScrollBarThickness (10);
-        viewport.getVerticalScrollBar().setColour (juce::ScrollBar::thumbColourId, col::ioInk.withAlpha (0.45f));
-        viewport.getHorizontalScrollBar().setColour (juce::ScrollBar::thumbColourId, col::ioInk.withAlpha (0.45f));
-        viewport.onCmdWheel = [this] (float f, juce::Point<int> at) { setZoom (zoom * f, &at); };
-        addAndMakeVisible (viewport);
-        view.onPan = [this] (juce::Point<int> d) { viewport.setViewPosition (viewport.getViewPosition() - d); };
-
-        zoomBox.addItem ("Fit", kFitId);
-        zoomBox.addSeparator();
         for (int pct : { 50, 75, 100, 125, 150, 200, 240 })
             zoomBox.addItem ("ZOOM  " + juce::String (pct) + " %", pct);
-        zoomBox.setTooltip ("Zoom: scales the panel (50-240%). Fit shows the whole panel in the window. "
-                            "Cmd+scroll zooms toward the pointer; drag the window corner to any shape.");
+        zoomBox.setTooltip ("Zoom: sets the window to a preset scale (50-240%). "
+                            "Dragging the window corner zooms continuously.");
         zoomBox.setColour (juce::ComboBox::backgroundColourId, col::headerBg.brighter (0.08f));
         zoomBox.setColour (juce::ComboBox::textColourId,       col::ioInk);
         zoomBox.setColour (juce::ComboBox::outlineColourId,    col::ioInk.withAlpha (0.55f));
@@ -813,8 +813,7 @@ public:
         zoomBox.onChange = [this]
         {
             const int id = zoomBox.getSelectedId();
-            if (id == kFitId) zoomToFit();
-            else if (id > 0)  setZoom ((float) id / 100.0f);
+            if (id > 0) setScaleStep ((float) id / 100.0f);
         };
         addAndMakeVisible (zoomBox);
 
@@ -827,56 +826,29 @@ public:
 
         tips = std::make_unique<juce::TooltipWindow> (this, 400); // shared TooltipWindow (U03)
 
+        constrainer.logicalW = view.logicalW;
+        constrainer.logicalH = view.logicalH;
+        constrainer.headerH  = HEADER_H;
+        constrainer.minZ = kMinScale; constrainer.maxZ = kMaxScale;
+        constrainer.setSizeLimits ((int) std::lround ((float) view.logicalW * kMinScale),
+                                   constrainer.heightFor ((int) std::lround ((float) view.logicalW * kMinScale)),
+                                   (int) std::lround ((float) view.logicalW * kMaxScale),
+                                   constrainer.heightFor ((int) std::lround ((float) view.logicalW * kMaxScale)));
+        setConstrainer (&constrainer);
         setResizable (true, true);
-        setResizeLimits (kMinW, kMinH,
-                         (int) std::lround ((float) view.logicalW * kMaxScale),
-                         (int) std::lround ((float) view.logicalH * kMaxScale) + HEADER_H);
 
-        applyZoom (z0);
-        if (w0 <= 0 || h0 <= 0) // first open: whole panel at the saved zoom, clipped to the screen
-        {
-            w0 = holder.getWidth();
-            h0 = holder.getHeight() + HEADER_H;
-            if (auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
-            {
-                w0 = juce::jmin (w0, (int) ((float) d->userArea.getWidth()  * 0.92f));
-                h0 = juce::jmin (h0, (int) ((float) d->userArea.getHeight() * 0.88f));
-            }
-        }
-        setSize (juce::jmax (kMinW, w0), juce::jmax (kMinH, h0));
+        setScaleStep (z0);
     }
 
     ~SatkEditor() override { setLookAndFeel (nullptr); }
 
-    // ---- zoom (panel scale; window untouched) ------------------------------
-    // keeps the panel point under `anchor` (viewport coords; centre if null) fixed
-    void setZoom (float z, const juce::Point<int>* anchor = nullptr)
-    {
-        z = juce::jlimit (kMinScale, kMaxScale, z);
-        const auto a = anchor != nullptr ? *anchor
-                                         : juce::Point<int> (viewport.getWidth() / 2, viewport.getHeight() / 2);
-        const auto panelPt = (viewport.getViewPosition() + a).toFloat() / zoom;
-        applyZoom (z);
-        viewport.setViewPosition ((panelPt * zoom).roundToInt() - a);
-    }
-    void zoomToFit()
-    {
-        // a hair under exact so the rounded-up content never exceeds the
-        // viewport by a pixel (which would bring the scrollbars back)
-        setZoom (0.999f * juce::jmin ((float) viewport.getWidth()  / (float) view.logicalW,
-                                      (float) viewport.getHeight() / (float) view.logicalH));
-        viewport.setViewPosition (0, 0);
-    }
-    float getZoom() const noexcept { return zoom; }
-
-    // legacy entry point (tests/tools): zoom AND size the window to show the
-    // whole panel at that zoom
+    // zoom step: size the window to the panel at scale f
     void setScaleStep (float f)
     {
-        applyZoom (juce::jlimit (kMinScale, kMaxScale, f));
-        setSize (holder.getWidth(), holder.getHeight() + HEADER_H);
-        viewport.setViewPosition (0, 0);
+        const int w = (int) std::lround ((float) view.logicalW * juce::jlimit (kMinScale, kMaxScale, f));
+        setSize (w, constrainer.heightFor (w));
     }
+    float getZoom() const noexcept { return zoom; }
 
     void resized() override
     {
@@ -884,8 +856,12 @@ public:
         auto header = r.removeFromTop (HEADER_H);
         clearBtn.setBounds (header.removeFromRight (104).reduced (6, 4));
         zoomBox.setBounds (header.removeFromRight (150).reduced (6, 4));
-        viewport.setBounds (r);
-        proc.setEditorSize (getWidth(), getHeight()); // window size persists, zoom unchanged
+        zoom = juce::jmin ((float) r.getWidth() / (float) view.logicalW,
+                           (float) r.getHeight() / (float) view.logicalH);
+        view.setTransform (juce::AffineTransform::scale (zoom).translated (0.0f, (float) HEADER_H));
+        view.setTopLeftPosition (0, 0);
+        proc.setEditorScale (zoom);   // corner drag and zoom menu share this value
+        updateZoomDisplay();
     }
     void paint (juce::Graphics& g) override
     {
@@ -906,20 +882,11 @@ public:
 
     SatkProcessor& proc;
     PanelView view;
-    ZoomViewport viewport;
     juce::ComboBox zoomBox;   // the visible ZOOM control (U02)
     juce::TextButton clearBtn;
+    PanelConstrainer constrainer;
 
 private:
-    void applyZoom (float z)
-    {
-        zoom = z;
-        holder.setSize ((int) std::ceil ((float) view.logicalW * z), (int) std::ceil ((float) view.logicalH * z));
-        view.setTransform (juce::AffineTransform::scale (z));
-        view.setTopLeftPosition (0, 0);
-        proc.setEditorScale (z);
-        updateZoomDisplay();
-    }
     void updateZoomDisplay()
     {
         const int pct = juce::roundToInt (zoom * 100.0f);
@@ -930,7 +897,6 @@ private:
     }
 
     SatkLookAndFeel lnf;
-    juce::Component holder;   // sized logical*zoom; hosts the transformed panel
     float zoom = 1.0f;
     std::unique_ptr<juce::TooltipWindow> tips;
 };

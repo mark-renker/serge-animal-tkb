@@ -247,8 +247,6 @@ void SatkProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     juce::ValueTree root ("SATK");
     root.setProperty ("editorScale", (double) editorScale.load(), nullptr);
-    root.setProperty ("editorW", editorW.load(), nullptr);
-    root.setProperty ("editorH", editorH.load(), nullptr);
     root.setProperty ("seed", juce::String::toHexString ((juce::int64) sys.engine.seed()), nullptr);
     root.appendChild (apvts.copyState(), nullptr);
     {
@@ -265,8 +263,6 @@ void SatkProcessor::setStateInformation (const void* data, int size)
 
     if (root.hasProperty ("editorScale"))
         editorScale.store ((float) (double) root.getProperty ("editorScale"));
-    if (root.hasProperty ("editorW") && root.hasProperty ("editorH"))
-        setEditorSize ((int) root.getProperty ("editorW"), (int) root.getProperty ("editorH"));
 
     auto params = root.getChildWithName (apvts.state.getType());
     if (params.isValid()) apvts.replaceState (params);
