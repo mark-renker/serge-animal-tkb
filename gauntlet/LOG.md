@@ -402,3 +402,17 @@ U01 rewritten (UX 24/24).
 - Side effects: bundle filenames become "Serge Animal TKB v2.{component,vst3,app}";
   the standalone's settings file becomes "Serge Animal TKB v2.settings".
   The REDESIGN_PLAN phase-0 / risk notes about the collision are now historical.
+
+## 2026-11-04 — Phase 4: UI soft bar CLOSED by Mark's approval
+
+- The UI piece reached the per-piece cap (5 judge rounds, two fresh critics
+  each, run 2026-11-03; means r1 3.00/3.50, r2 3.83/3.50, r3 3.67/3.83,
+  r4 3.83/3.83, r5 3.50/3.50 vs exit 4.0). Recurring named gaps at r4/r5
+  (diminishing-returns stop): lettering heavier than PF50, modules more boxed
+  than hardware flow, no hover cue, TKB pad/knob texture.
+- Per the stop conditions this was reported to Mark, who chose to ACCEPT the
+  UI as of f07ad90/c58f31c ("happy with it"). The UI soft bar is closed by
+  owner approval, not by critic score; the open gaps above are recorded as
+  candidates for a later polish pass. Zoom behaviour (corner drag, 95%×92%
+  screen cap, scroll beyond) is Mark's explicit choice and out of scope.
+- Phase 4 continues on the sound bar only.
