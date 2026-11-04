@@ -416,3 +416,24 @@ U01 rewritten (UX 24/24).
   candidates for a later polish pass. Zoom behaviour (corner drag, 95%×92%
   screen cap, scroll beyond) is Mark's explicit choice and out of scope.
 - Phase 4 continues on the sound bar only.
+
+## 2026-11-04 — Hard gates G1/G3/G4/G5: all green
+
+- **G1 build**: clean `cmake -B /tmp/satk-g1 -DCMAKE_BUILD_TYPE=Release` + full
+  build of f9d36db (AU, VST3, Standalone, satk_gauntlet, satk_uxtests,
+  satk_snapshot, satk_perfspike): exit 0, **0 warnings in src/ tests/ tools/**
+  (67 warnings total, all inside JUCE).
+- **G3 auval**: `auval -v aumu Sat2 Rnky` → AU VALIDATION SUCCEEDED, 0 warnings
+  (installed build of 89c647b). `auval -a` lists both `aumu Sat2 Rnky` (v2) and
+  `aumu Satk Rnky` (v1) — coexisting as intended.
+- **G4 pluginval 1.0.4, strictness 10**: AU (installed 89c647b) SUCCESS, 0
+  failures — one informational line "Current program is -1" (no factory
+  presets yet; phase-5 presets will add programs). VST3: SUCCESS, 0 failures,
+  re-run on the *installed* 89c647b bundle (an earlier run used an e0f7ccd
+  build differing only in the MASTER default).
+- **G5 install**: fresh "Serge Animal TKB v2.component" + ".vst3" in
+  ~/Library/Audio/Plug-Ins/{Components,VST3} (2026-11-04 15:03), valid bundles;
+  v1 remains installed alongside.
+- Remaining for Win: sound soft bar (phase 4, in progress). Phase 5 split:
+  presets + program support (UI/plugin session), README + final validation and
+  install after merge (sound session).
