@@ -1,0 +1,508 @@
+// Serge Animal TKB v2 — sound-bar measurement tool (satk_measure). Pure C++17.
+//
+// Measures the SAME pre-registered quantities (GAUNTLET.md "Sound bar" + the
+// hard-gate band definitions T03/T04/T05/T07/T08/T09) on the v1 reference
+// WAVs and the v2 renders, with one code path per quantity. The analysis
+// primitives are the gauntlet's own (tests/t_nto.h: Blackman-Harris spectrum,
+// worstNonHarmonic, peakNear, zcFreq; tests/t_vcm_ring.h: Goertzel harmonic
+// bank, centroid, odd/even energy, slopeReversals, ampSpectrum;
+// tests/t_vcfq.h: decayTime) — applied to file samples instead of jack
+// captures.
+//
+// Usage:
+//   satk_measure <renders dir>                 -> markdown table (v1 | v2 | control)
+//   satk_measure <renders dir> --key <KEY.md>  -> same rows relabelled A/B/C per
+//                                                 the key's "key:" lines (packet table)
+// All analysis uses the LEFT channel (every file but default_note60 is
+// dual-mono). Samples are int16 / 32000 (the writer convention of both
+// renderers).
+#include "../tests/t_nto.h"
+#include "../tests/t_vcm_ring.h"
+#include "../tests/t_vcfq.h"
+#include "WavIO.h"
+#include <array>
+#include <fstream>
+#include <map>
+#include <optional>
+#include <sstream>
+
+namespace {
+
+constexpr double SR = 48000.0;
+using Buf = std::vector<float>;
+
+// ---- file access ------------------------------------------------------------
+std::string gDir;
+std::optional<Buf> loadL (const std::string& rel)
+{
+    wavio::Stereo s;
+    if (! wavio::read16 (gDir + "/" + rel, s) || s.sr != 48000) return std::nullopt;
+    return s.L;
+}
+Buf slice (const Buf& x, double t0, double len)
+{
+    const size_t a = std::min (x.size(), (size_t) std::lround (t0 * SR));
+    const size_t b = std::min (x.size(), a + (size_t) std::lround (len * SR));
+    return Buf (x.begin() + (long) a, x.begin() + (long) b);
+}
+Buf sliceN (const Buf& x, double t0, size_t n)
+{
+    const size_t a = std::min (x.size(), (size_t) std::lround (t0 * SR));
+    return Buf (x.begin() + (long) a, x.begin() + (long) std::min (x.size(), a + n));
+}
+
+// ---- analysis built on the gauntlet primitives ------------------------------
+// f0 refinement: BH spectrum peak near the nominal, log-parabolic interpolation
+double refineF0 (const Buf& x, double nominal)
+{
+    const auto m = t_nto::spectrum (x);
+    const double bin = SR / (double) x.size();
+    size_t best = 0;
+    for (size_t k = (size_t) (0.97 * nominal / bin); k <= (size_t) (1.03 * nominal / bin) && k + 1 < m.size(); ++k)
+        if (best == 0 || m[k] > m[best]) best = k;
+    if (best == 0) return nominal;
+    const double a = std::log (m[best - 1] + 1e-30), b = std::log (m[best] + 1e-30), c = std::log (m[best + 1] + 1e-30);
+    const double d = 0.5 * (a - c) / (a - 2 * b + c);
+    return ((double) best + d) * bin;
+}
+
+// harmonic amplitudes 1..nH over an integer number of periods of f0 (Goertzel
+// bank from t_vcm_ring: leakage-free on whole periods)
+std::vector<double> harmonicsWin (const Buf& x, double f0, int nH)
+{
+    const double periods = std::floor ((double) x.size() * f0 / SR);
+    const size_t n = std::min (x.size(), (size_t) std::lround (periods * SR / f0));
+    return t_vcm_ring::harmonics (Buf (x.begin(), x.begin() + (long) n), f0, nH);
+}
+
+double strongestOf (const std::vector<double>& a)
+{ double s = 0; for (size_t h = 1; h < a.size(); ++h) s = std::max (s, a[h]); return s; }
+
+bool strictlyIncreasing (const std::vector<double>& v)
+{ for (size_t i = 1; i < v.size(); ++i) if (! (v[i] > v[i - 1])) return false; return true; }
+
+std::string fmt (const char* f, double v) { char b[64]; std::snprintf (b, sizeof b, f, v); return b; }
+std::string list (const std::vector<double>& v, const char* f = "%.0f")
+{
+    std::string s;
+    for (size_t i = 0; i < v.size(); ++i) s += (i ? ", " : "") + fmt (f, v[i]);
+    return s;
+}
+
+// ---- result rows ------------------------------------------------------------
+enum class Verdict { In, Out, NA, Info };
+struct Cell { std::string text = "—"; Verdict v = Verdict::NA; };
+struct Row
+{
+    std::string piece, gate, quantity, band;
+    std::map<std::string, Cell> c; // "v1", "v2", "control"
+};
+std::vector<Row> gRows;
+
+Cell cell (std::string text, bool inBand) { return { std::move (text), inBand ? Verdict::In : Verdict::Out }; }
+Cell info (std::string text) { return { std::move (text), Verdict::Info }; }
+
+using Measure = std::function<std::vector<Cell> (const Buf&)>;
+using RowSpec = std::array<std::string, 3>; // gate, quantity, band
+
+// Runs `fn` on the v1 and v2 copies of `file` (and the control when given)
+// and appends one table row per returned cell index.
+void measure (const std::string& piece, const std::string& file, const std::vector<RowSpec>& rows,
+              const Measure& fn, const std::string& controlFile = {})
+{
+    std::map<std::string, std::vector<Cell>> res;
+    for (const char* who : { "v1", "v2" })
+        if (auto b = loadL (std::string (who) + "/" + file)) res[who] = fn (*b);
+    if (! controlFile.empty())
+        if (auto b = loadL (controlFile)) res["control"] = fn (*b);
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+        Row r { piece, rows[i][0], rows[i][1], rows[i][2], {} };
+        for (auto& [who, cells] : res) if (i < cells.size()) r.c[who] = cells[i];
+        gRows.push_back (r);
+    }
+}
+
+// =============================================================================
+// per-piece measurements
+// =============================================================================
+std::vector<Cell> mNtoSaw (const Buf& x)
+{
+    const auto w = sliceN (x, 0.5, 65536);
+    const double f0 = refineF0 (w, 1975.0);
+    const auto m = t_nto::spectrum (w);
+    double fi = 0, ff = 0;
+    const double in = t_nto::worstNonHarmonic (m, w.size(), f0, 6000.0, 20.0, &fi);
+    const double full = t_nto::worstNonHarmonic (m, w.size(), f0, 24000.0, 20.0, &ff);
+    return { cell (fmt ("%.1f dBc", in) + fmt (" @ %.0f Hz", fi), in <= -60.0),
+             cell (fmt ("%.1f dBc", full) + fmt (" @ %.0f Hz", ff), full <= -30.0),
+             info (fmt ("%.3f Hz", f0)) };
+}
+
+std::vector<Cell> mNtoShape (const Buf& x)
+{
+    std::vector<double> c;
+    for (int k = 0; k < 8; ++k)
+    {
+        const double f0 = refineF0 (sliceN (x, k + 0.2, 32768), 220.0);
+        c.push_back (t_vcm_ring::centroid (harmonicsWin (slice (x, k + 0.2, 0.75), f0, 100), f0));
+    }
+    return { cell (list (c), strictlyIncreasing (c)) };
+}
+
+// waveform turnarounds per period -> static-transfer slope reversals over one
+// input sweep: a sine through a memoryless curve with r reversals shows
+// 2 + 2r extrema per period. Hysteresis 2 % of the window peak (the gate
+// test uses 0.05 V of 2.5 V).
+double transferReversals (const Buf& w, double f0)
+{
+    const int ext = t_vcm_ring::slopeReversals (w, 0.02 * wavio::peak (w));
+    const double periods = (double) w.size() * f0 / SR;
+    return ((double) ext / periods - 2.0) / 2.0;
+}
+
+std::vector<Cell> mVcmMid (const Buf& x)
+{
+    std::vector<double> c, aMax;
+    double f0max = 220.0;
+    for (int k = 0; k < 8; ++k)
+    {
+        const double f0 = refineF0 (sliceN (x, k + 0.2, 32768), 220.0);
+        const auto a = harmonicsWin (slice (x, k + 0.2, 0.75), f0, 100);
+        c.push_back (t_vcm_ring::centroid (a, f0));
+        if (k == 7) { aMax = a; f0max = f0; }
+    }
+    const double s = strongestOf (aMax);
+    int oddFund = 0, oddMax = 0;
+    for (size_t h = 1; h < aMax.size(); h += 2)
+    {
+        if (aMax[h] >= 0.01 * aMax[1]) ++oddFund;
+        if (aMax[h] >= 0.01 * s) ++oddMax;
+    }
+    double odd, even; t_vcm_ring::oddEvenEnergy (aMax, odd, even);
+    const double oe = 10.0 * std::log10 (odd / std::max (even, 1e-30));
+    const double rev = transferReversals (slice (x, 7.2, 0.75), f0max);
+    const auto sp = sliceN (x, 7.2, 32768);
+    const double alias = t_nto::worstNonHarmonic (t_nto::spectrum (sp), sp.size(), f0max, 24000.0, 20.0);
+    return { cell (fmt ("%.0f", oddFund) + fmt (" re H1 / %.0f re max", oddMax), oddFund >= 5 && oddMax >= 5),
+             cell (fmt ("%.1f dB", oe), oe >= 12.0),
+             cell (list (c), strictlyIncreasing (c)),
+             cell (fmt ("%.1f", rev), rev >= 2.0),
+             info (fmt ("%.1f dBc", alias)) };
+}
+
+std::vector<Cell> mVcmBot (const Buf& x)
+{
+    const double f0 = refineF0 (sliceN (x, 0.5, 65536), 220.0);
+    const auto a = harmonicsWin (slice (x, 0.5, 4.0), f0, 100);
+    double odd, even; t_vcm_ring::oddEvenEnergy (a, odd, even);
+    const double eo = 10.0 * std::log10 (even / std::max (odd, 1e-30));
+    const double s = strongestOf (a);
+    std::vector<double> h18;
+    for (int h = 1; h <= 8; ++h) h18.push_back (gauntlet::db (a[(size_t) h], s));
+    return { cell (fmt ("%+.1f dB", eo), eo >= 12.0), info (list (h18, "%.1f")) };
+}
+
+std::vector<Cell> mPing (const Buf& x)
+{
+    // per 2 s Q step: detect pings (onset = first sample above 10 % of the
+    // step's peak, then a 0.45 s window), peak -> -40 dB (t_vcfq::decayTime);
+    // median over the step's pings
+    std::vector<double> med, amp;
+    double ringHz = 0.0;
+    for (int k = 0; k < 4; ++k)
+    {
+        const auto st = slice (x, 2.0 * k, 2.0);
+        const double thr = 0.1 * wavio::peak (st);
+        std::vector<double> d; double pkSum = 0;
+        for (size_t i = 0; i < st.size(); ++i)
+        {
+            if (std::fabs (st[i]) <= thr) continue;
+            const size_t a = i > 48 ? i - 48 : 0, b = std::min (st.size(), i + (size_t) (0.45 * SR));
+            const Buf seg (st.begin() + (long) a, st.begin() + (long) b);
+            float p = 0;
+            d.push_back (1000.0 * t_vcfq::decayTime (seg, p));
+            pkSum += p;
+            if (k == 3 && ringHz == 0.0)
+                ringHz = t_nto::zcFreq (Buf (seg.begin(), seg.begin() + std::min<long> ((long) seg.size(), 2400)));
+            i = b;
+        }
+        std::sort (d.begin(), d.end());
+        med.push_back (d.empty() ? 0.0 : d[d.size() / 2]);
+        amp.push_back (d.empty() ? 0.0 : pkSum / (double) d.size());
+    }
+    return { cell (list (med, "%.1f") + " ms", strictlyIncreasing (med) && med.front() > 0.0),
+             info (list (amp, "%.3f")), info (fmt ("%.0f Hz", ringHz)) };
+}
+
+std::vector<Cell> mDusgCycle (const Buf& x)
+{
+    const auto w = slice (x, 1.0, 4.0);
+    size_t up = 0, n = 0;
+    for (size_t i = 1; i < w.size(); ++i) if (w[i] != w[i - 1]) { ++n; if (w[i] > w[i - 1]) ++up; }
+    const double frac = (double) up / (double) std::max<size_t> (1, n);
+    return { cell (fmt ("%.3f", frac), std::fabs (frac - 0.5) <= 0.01), info (fmt ("%.2f Hz", t_nto::zcFreq (w))) };
+}
+
+std::vector<Cell> mDusgEnv (const Buf& x)
+{
+    // envelope of the 1 kHz carrier: max |x| per 1 ms (48-sample) block
+    std::vector<double> env;
+    for (size_t i = 0; i + 48 <= x.size(); i += 48)
+    {
+        double p = 0;
+        for (size_t j = i; j < i + 48; ++j) p = std::max (p, (double) std::fabs (x[j]));
+        env.push_back (p);
+    }
+    double worstRise = 0, worstFall = 0, riseT = 0, fallT = 0;
+    const double starts[3] = { 0.3, 2.4, 4.5 };
+    for (double st : starts)
+    {
+        const size_t k0 = (size_t) (st * 1000.0), k1 = std::min (env.size(), k0 + 2000);
+        size_t kp = k0;
+        for (size_t k = k0; k < k1; ++k) if (env[k] > env[kp]) kp = k;
+        const double fs = env[kp];
+        // T05d: mid 80 % of the swing (10..90 % FS), least-squares line, max deviation
+        auto lineDev = [&] (size_t a, size_t b, double& t1090)
+        {
+            std::vector<std::pair<double, double>> pts;
+            for (size_t k = a; k < b; ++k)
+                if (env[k] >= 0.1 * fs && env[k] <= 0.9 * fs) pts.push_back ({ (double) k, env[k] });
+            if (pts.size() < 3) return 100.0;
+            t1090 = (pts.back().first - pts.front().first) / 1000.0;
+            double sx = 0, sy = 0, sxx = 0, sxy = 0; const double N = (double) pts.size();
+            for (auto& p : pts) { sx += p.first; sy += p.second; sxx += p.first * p.first; sxy += p.first * p.second; }
+            const double bb = (N * sxy - sx * sy) / (N * sxx - sx * sx), aa = (sy - bb * sx) / N;
+            double dev = 0;
+            for (auto& p : pts) dev = std::max (dev, std::fabs (p.second - (aa + bb * p.first)));
+            return 100.0 * dev / fs;
+        };
+        double rt = 0, ft = 0;
+        worstRise = std::max (worstRise, lineDev (k0, kp + 1, rt));
+        worstFall = std::max (worstFall, lineDev (kp, k1, ft));
+        riseT += rt / 3.0; fallT += ft / 3.0;
+    }
+    return { cell (fmt ("%.2f %% FS", worstRise), worstRise <= 3.0),
+             info (fmt ("%.2f %% FS", worstFall)),
+             info (fmt ("%.3f s", riseT / 0.8) + fmt (" / %.3f s", fallT / 0.8)) };
+}
+
+std::vector<Cell> mDusgDirect (const Buf& x)
+{
+    return { info (fmt ("peak %.4f", wavio::peak (x)) + fmt (", rms %.5f", wavio::rms (x))) };
+}
+
+std::vector<Cell> mRing (const Buf& x)
+{
+    const auto w = sliceN (x, 0.5, 131072);
+    const auto m = t_vcm_ring::ampSpectrum (w);
+    const size_t n = w.size();
+    const double bin = SR / (double) n;
+    // modulator frequency from the strongest lower sideband in 200..270 Hz
+    size_t kb = (size_t) (200.0 / bin);
+    for (size_t k = kb; k <= (size_t) (270.0 / bin); ++k) if (m[k] > m[kb]) kb = k;
+    const double fy = 300.0 - (double) kb * bin;
+    const double lsb = t_nto::peakNear (m, n, 300.0 - fy, 3.0), usb = t_nto::peakNear (m, n, 300.0 + fy, 3.0);
+    const double car = t_nto::peakNear (m, n, fy, 3.0), sig = t_nto::peakNear (m, n, 300.0, 3.0);
+    const double sY = gauntlet::db (std::min (lsb, usb), car), sX = gauntlet::db (std::min (lsb, usb), sig);
+    return { cell (fmt ("%.1f dB", sY), sY >= 55.0 && sY <= 85.0),
+             cell (fmt ("%.1f dB", sX), sX >= 55.0 && sX <= 85.0),
+             info (fmt ("%.1f Hz", fy)) };
+}
+
+std::vector<Cell> mRingMorph (const Buf& x)
+{
+    std::vector<double> sig, sb;
+    for (int k = 0; k <= 8; ++k)
+    {
+        const auto w = sliceN (x, k + 0.25, 32768);
+        const auto m = t_vcm_ring::ampSpectrum (w);
+        sig.push_back (t_nto::peakNear (m, w.size(), 300.0, 4.0));
+        sb.push_back (t_nto::peakNear (m, w.size(), 220.0, 4.0) + t_nto::peakNear (m, w.size(), 380.0, 4.0));
+    }
+    bool mono = true;
+    for (size_t i = 1; i < sig.size(); ++i) mono &= sig[i] < sig[i - 1] && sb[i] > sb[i - 1];
+    std::vector<double> sd, bd;
+    for (size_t i = 0; i < sig.size(); i += 2)
+    { sd.push_back (gauntlet::db (sig[i], 1.0)); bd.push_back (gauntlet::db (sb[i], 1.0)); }
+    return { cell ("X " + list (sd, "%.0f") + " / SB " + list (bd, "%.0f") + " dBFS (steps 0,2,4,6,8)", mono) };
+}
+
+std::vector<Cell> mEndDuty (const Buf& x)
+{
+    // END through the DC-blocked monitor: its edges are the big sample steps
+    const double fr[5] = { 0.05, 0.25, 0.50, 0.75, 0.95 };
+    std::vector<double> duty; double worst = 0;
+    for (int k = 0; k < 5; ++k)
+    {
+        const auto w = slice (x, 1.5 * k + 0.3, 1.1);
+        std::vector<double> up, dn;
+        for (size_t i = 1; i < w.size(); ++i)
+        {
+            const double d = (double) w[i] - (double) w[i - 1];
+            if (d > 0.05 && (up.empty() || (double) i - up.back() > 4)) up.push_back ((double) i);
+            if (d < -0.05 && (dn.empty() || (double) i - dn.back() > 4)) dn.push_back ((double) i);
+        }
+        double acc = 0; int cnt = 0;
+        for (size_t u = 0; u + 1 < up.size(); ++u)
+        {
+            auto it = std::upper_bound (dn.begin(), dn.end(), up[u]);
+            if (it == dn.end() || *it > up[u + 1]) continue;
+            acc += (*it - up[u]) / (up[u + 1] - up[u]); ++cnt;
+        }
+        duty.push_back (cnt ? acc / cnt : 0.0);
+        worst = std::max (worst, std::fabs (duty.back() - fr[k]));
+    }
+    return { cell (list (duty, "%.3f") + fmt (" (worst err %.3f)", worst), worst <= 0.01) };
+}
+
+std::vector<Cell> mDefault (const Buf& x)
+{
+    return { info (fmt ("%.4f", wavio::rms (slice (x, 0.25, 1.0)))), info (fmt ("%.5f", wavio::peak (slice (x, 3.0, 1.5)))) };
+}
+
+void runAll()
+{
+    measure ("nto_saw", "nto_saw_1975.wav",
+             { { "T03", "worst non-harmonic, 0–6 kHz (harmonics ±20 Hz excluded)", "≤ −60 dBc" },
+               { "T03", "worst non-harmonic, 0–24 kHz", "≤ −30 dBc" },
+               { "info", "f0 (BH-FFT peak, interpolated)", "1975 Hz" } },
+             mNtoSaw, "control/nto_saw_1975_naive_zoh12k.wav");
+    measure ("nto_shape", "nto_shape_sweep.wav",
+             { { "T04 (extra)", "harmonic centroid per shape step 1..8 (Hz)", "strictly increasing" } },
+             mNtoShape);
+    measure ("vcm_mid_fold", "vcm_mid_foldsweep.wav",
+             { { "T08", "odd harmonics ≥ −40 dBc at max fold (count)", "≥ 5 (re H1 and re max)" },
+               { "T08", "odd:even energy at max fold", "≥ 12 dB" },
+               { "T08", "harmonic centroid per fold step 1..8 (Hz)", "strictly increasing" },
+               { "T08 (proxy)", "transfer slope reversals at max fold (from waveform extrema)", "≥ 2" },
+               { "info", "worst non-harmonic at max fold, 220 Hz (T08's AA band is specified at 1 kHz)", "(−50 dBc @ 1 kHz)" } },
+             mVcmMid);
+    measure ("vcm_bot", "vcm_bot_full.wav",
+             { { "T08", "even:odd energy at full depth", "≥ +12 dB" },
+               { "info", "H1..H8 dB re strongest", "—" } },
+             mVcmBot);
+    measure ("vcfq_ping", "vcfq_ping.wav",
+             { { "T07", "ping decay peak→−40 dB, median per Q step (Q 2/6/15/35)", "strictly increasing" },
+               { "info", "mean ping peak per Q step (FS)", "—" },
+               { "info", "ring frequency, first Q=35 ping (zero crossings)", "fc = 800 Hz" } },
+             mPing);
+    measure ("dusg_cycle", "dusg_cycle.wav",
+             { { "T05e (proxy)", "rising fraction of the cycle, rise = fall dialed (only END-duty evidence in the pair set)", "0.50 ± 0.01" },
+               { "info", "cycle frequency", "200 Hz" } },
+             mDusgCycle);
+    measure ("dusg_env", "dusg_env_shape.wav",
+             { { "T05d", "mid-80 % rise deviation from a line (worst of 3)", "≤ 3 % FS" },
+               { "info", "mid-80 % fall deviation from a line (worst of 3)", "—" },
+               { "T05a (info)", "rise / fall time (10–90 % ÷ 0.8), dialed 0.5 / 1.0 s", "±10 %" } },
+             mDusgEnv);
+    measure ("dusg_env_direct", "dusg_env_shape_monitor_direct.wav",
+             { { "info", "slow envelope straight through the monitor bus", "—" } },
+             mDusgDirect);
+    measure ("ring", "ring_sines.wav",
+             { { "T09", "suppression of Y (modulator, ~80 Hz) re weaker sideband", "55–85 dB" },
+               { "T09", "suppression of X (300 Hz sine) re weaker sideband", "55–85 dB" },
+               { "info", "modulator frequency (from sideband spacing)", "~80 Hz" } },
+             mRing);
+    measure ("default_voice", "default_note60.wav",
+             { { "info", "RMS 0.25–1.25 s (L)", "—" }, { "info", "peak 3.0–4.5 s (tail)", "—" } },
+             mDefault);
+}
+
+// v2-only supplementary rows (no v1 counterpart file)
+std::vector<Row> runSupplementary()
+{
+    std::vector<Row> out;
+    auto add = [&] (const std::string& file, const std::vector<RowSpec>& rows, const Measure& fn)
+    {
+        auto b = loadL ("v2/supplementary/" + file);
+        if (! b) return;
+        auto cells = fn (*b);
+        for (size_t i = 0; i < rows.size() && i < cells.size(); ++i)
+            out.push_back ({ file, rows[i][0], rows[i][1], rows[i][2], { { "v2", cells[i] } } });
+    };
+    add ("ring_bipolar.wav",
+         { { "T09", "suppression of Y re weaker sideband (bipolar modulator)", "55–85 dB" },
+           { "T09", "suppression of X re weaker sideband (bipolar modulator)", "55–85 dB" },
+           { "info", "modulator frequency", "~80 Hz" } }, mRing);
+    add ("ring_morph_sweep.wav",
+         { { "T09", "morph 9 steps: X falls, sidebands rise", "strictly monotonic" } }, mRingMorph);
+    add ("dusg_end_duty.wav",
+         { { "T05e", "END duty at rise/(rise+fall) = .05/.25/.50/.75/.95", "tracks ratio ±0.01" } }, mEndDuty);
+    return out;
+}
+
+const char* vtext (Verdict v)
+{
+    switch (v)
+    {
+        case Verdict::In:  return "IN";
+        case Verdict::Out: return "**OUT**";
+        case Verdict::NA:
+        case Verdict::Info: break;
+    }
+    return "—";
+}
+
+void printCells (const Row& r, const std::vector<std::string>& who)
+{
+    std::printf ("| %s | %s | %s | %s |", r.piece.c_str(), r.gate.c_str(), r.quantity.c_str(), r.band.c_str());
+    for (auto& w : who)
+    {
+        auto it = r.c.find (w);
+        if (it == r.c.end()) std::printf (" | |");
+        else std::printf (" %s | %s |", it->second.text.c_str(), vtext (it->second.v));
+    }
+    std::printf ("\n");
+}
+
+void printVersionTable()
+{
+    std::printf ("| piece | gate | quantity | band | v1 | v1 | v2 | v2 | control | control |\n"
+                 "|---|---|---|---|---|---|---|---|---|---|\n");
+    for (auto& r : gRows) printCells (r, { "v1", "v2", "control" });
+    std::printf ("\n| file (v2 only) | gate | quantity | band | v2 | v2 |\n|---|---|---|---|---|---|\n");
+    for (auto& r : runSupplementary()) printCells (r, { "v2" });
+}
+
+// key lines: "key: <piece> A=v1 B=v2 [C=control]"
+void printKeyedTable (const std::string& keyFile)
+{
+    std::ifstream in (keyFile);
+    std::map<std::string, std::map<std::string, std::string>> key; // piece -> letter -> source
+    std::string line;
+    while (std::getline (in, line))
+    {
+        const auto p = line.find ("key:");
+        if (p == std::string::npos) continue;
+        std::istringstream ss (line.substr (p + 4));
+        std::string piece, tok;
+        ss >> piece;
+        while (ss >> tok)
+        {
+            const auto eq = tok.find ('=');
+            if (eq != std::string::npos) key[piece][tok.substr (0, eq)] = tok.substr (eq + 1);
+        }
+    }
+    std::printf ("| piece | gate | quantity | band | A | A | B | B | C | C |\n"
+                 "|---|---|---|---|---|---|---|---|---|---|\n");
+    for (auto& r : gRows)
+    {
+        Row rr = r; rr.c.clear();
+        for (auto& [letter, src] : key[r.piece])
+            if (auto it = r.c.find (src); it != r.c.end()) rr.c[letter] = it->second;
+        printCells (rr, { "A", "B", "C" });
+    }
+}
+
+} // namespace
+
+int main (int argc, char** argv)
+{
+    if (argc < 2) { std::fprintf (stderr, "usage: satk_measure <renders dir> [--key KEY.md]\n"); return 2; }
+    gDir = argv[1];
+    runAll();
+    if (argc >= 4 && std::string (argv[2]) == "--key") printKeyedTable (argv[3]);
+    else printVersionTable();
+    return 0;
+}
