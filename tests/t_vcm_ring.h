@@ -9,7 +9,9 @@
 //             steps AND over 8 VC FOLD steps; DC-ramp static transfer shows
 //             >= 2 slope-sign reversals; folded ~1 kHz sine (997 Hz, so
 //             aliases do not land on harmonic bins of 48 kHz) -> every
-//             non-harmonic component <= -50 dBc.
+//             non-harmonic component <= -50 dBc. Regression: the FOLD-knob
+//             centroid also rises with the REAL NTO SINE as the input
+//             (via VCA1 LIN 0.8, the sound-bar patch, and direct).
 //   T08 BOT : full depth -> even harmonics dominate by >= 12 dB; BOT SQ OUT
 //             present, squared-up (crest), distinct from BOT OUT, PWM-like
 //             (duty moves with depth).
@@ -25,6 +27,7 @@
 // Render evidence (SATK_RENDER=1): gauntlet/renders/v2work/shapers/*.wav.
 #pragma once
 #include "Harness.h"
+#include "t_nto.h" // freqKnob, zcFreq (real-NTO-sine fold sweep)
 #include <complex>
 #include <cstdint>
 #include <cstdlib>
@@ -281,6 +284,69 @@ inline void testMid()
     double ob, eb; oddEvenEnergy (ab, ob, eb);
     CHECK (10.0 * std::log10 (ob / std::max (eb, 1e-30)) < oe - 20.0,
            "T08 MID BIAS off-centre adds even harmonics", 10.0 * std::log10 (ob / std::max (eb, 1e-30)), oe);
+}
+
+// Regression (sound bar, vcm_mid_foldsweep.wav): the centroid must also rise
+// for a REAL, slightly impure sine — the NTO SINE jack (under-driven tri->sine
+// shaper: H3 ~ -37 dBc, THD ~1.5 %, inside T04), not the ideal sine above.
+// Feeds: (a) the sound-bar manifest patch, NTO SINE -> VCA1 (LIN, LEVEL 0.8)
+// -> MID IN 1; (b) NTO SINE straight into MID IN 1. NTO 220 Hz, BIAS centred,
+// drift 0 (T08 conditions); FOLD knob 8 steps k/7, 1 s each after a 0.2 s
+// settle; centroid on the refined (zero-crossing) f0. Before the 2026-11-04
+// fix the manifest feed went 262 -> 251 -> 270 Hz: the knee onset smoothed
+// away the NTO's peak kink faster than it added harmonics of its own (LOG.md).
+inline std::vector<double> realSineFoldSweep (bool viaVca)
+{
+    constexpr int nH = 100;
+    std::vector<double> c;
+    for (int k = 0; k < 8; ++k)
+    {
+        Rig r; auto& s = r.sys;
+        s.out->ctls[OUT::cDrift].v = 0.0f;
+        s.nto->ctls[NTO::cFreq].v = t_nto::freqKnob (220.0);
+        s.vca1->ctls[VCA::cResponse].v = 0.0f; // LIN
+        s.vca1->ctls[VCA::cLevel].v = 0.8f;
+        if (viaVca)
+        {
+            s.patch (s.nto, NTO::jSine, s.vca1, VCA::jIn);
+            s.patch (s.vca1, VCA::jOut, s.vcm, VCM::jMidIn1);
+        }
+        else
+            s.patch (s.nto, NTO::jSine, s.vcm, VCM::jMidIn1);
+        s.vcm->ctls[VCM::cBias].v = 0.5f;
+        s.vcm->ctls[VCM::cFold].v = (float) k / 7.0f;
+        s.prepare (SR); // snap the knob smoothers to the test settings
+        r.step (9600);
+        std::vector<float> y (48000), ref (48000);
+        for (size_t i = 0; i < y.size(); ++i)
+        {
+            s.engine.tick();
+            y[i] = s.vcm->jacks[VCM::jMidOut].value;
+            ref[i] = s.nto->jacks[NTO::jSine].value;
+        }
+        const double f0 = t_nto::zcFreq (ref);
+        c.push_back (centroid (harmonics (y, f0, nH), f0));
+    }
+    return c;
+}
+
+inline void testMidRealSine()
+{
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        const bool viaVca = pass == 0;
+        const auto c = realSineFoldSweep (viaVca);
+        bool mono = true;
+        double worst = 1.0e9;
+        for (size_t i = 1; i < c.size(); ++i) { mono &= c[i] > c[i - 1]; worst = std::min (worst, c[i] / c[i - 1]); }
+        std::printf ("  real NTO SINE %s -> MID, centroid vs FOLD knob (Hz):",
+                     viaVca ? "-> VCA1 LIN 0.8" : "direct");
+        for (double v : c) std::printf (" %.1f", v);
+        std::printf ("  (worst step ratio %.4f)\n", worst);
+        CHECK (mono, viaVca ? "T08 MID real NTO sine via VCA 0.8: centroid rises (8 FOLD)"
+                            : "T08 MID real NTO sine direct: centroid rises (8 FOLD)",
+               c.front(), c.back());
+    }
 }
 
 // Anti-aliasing: max fold, ~1 kHz sine (997 Hz) at 2.5 V; every component
@@ -786,6 +852,7 @@ inline void run()
 {
     GROUP ("T08 VCM (mid folder, bottom rectifiers + SQ, top LO/HI, alias floor)");
     testMid();
+    testMidRealSine();
     testMidAlias();
     testBot();
     testTop();

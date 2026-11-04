@@ -36,8 +36,21 @@ namespace shapers {
 // (triangle or sine) has an intrinsic ripple in spectral centroid vs gain
 // (period 2 in folder units — the sine peak alternately dwells on a flat
 // turnaround or a steep flank) that breaks T08's monotonic sweep for VC FOLD
-// steps of 2^0.286. With decay 0.5 / shrink 1.15 / w 0.6 the centroid ratio
-// over ANY ×1.215 gain step is >= 1.059 for every input level up to gain 16.
+// steps of 2^0.286. Decay 0.5 / shrink 1.15 keep the centroid rising over
+// any ×1.215 gain step for every ideal-sine input level up to gain 16.
+//
+// Why w = 1.0, i.e. the first knee's rounding reaches the origin (2026-11-04,
+// LOG.md): with w 0.6 the transfer was exactly linear below |u| = 0.4 and the
+// knee came in gently above it. A REAL sine (NTO SINE: under-driven shaper,
+// a small kink at each peak, H3 -37 dBc, THD 1.5 %) then lost centroid as FOLD
+// rose from minimum (262 -> 251 Hz): the soft knee onset lowered the slope
+// under the peaks, smoothing the input's kink series (and cancelling its
+// H3/H5, opposite sign) before it added enough harmonics of its own. With
+// w = 1 the curve is u - 0.44·u|u| near zero: gently compressive from the
+// first millivolt, like a transistor folder, never a clean linear zone. Its
+// own harmonics then dominate the input's residue at every fold setting, so
+// more FOLD always means more upper harmonics for slightly impure sines too.
+// Cost: ~4.6 % THD at minimum FOLD with a 2.5 V sine (v1's sin() folder: ~2.6 %).
 //
 // ADAA: P1..P3 (P1' = pl, P2' = P1, P3' = P2) are tabulated per segment at
 // configure time, so f / F1 / F2 of the smoothed composite (box differences
@@ -302,7 +315,7 @@ private:
     static constexpr int    kFoldTurns     = 6;      // reflector-cascade turnarounds, then hold
     static constexpr double kFoldDecay     = 0.5;    // successive fold-peak amplitude ratio
     static constexpr double kFoldShrink    = 1.15;   // successive fold-spacing ratio (denser outward)
-    static constexpr double kFoldW         = 0.6;    // knee rounding half-width (folder units)
+    static constexpr double kFoldW         = 1.0;    // knee rounding half-width (folder units)
     static constexpr float  kTopCvOctPerV  = 0.4f;   // HI drive CV, same law as fold
     static constexpr float  kTopMaxDrive   = 40.0f;
     static constexpr float  kEnvTau        = 0.1f;   // rectifier level-compensation release (s)

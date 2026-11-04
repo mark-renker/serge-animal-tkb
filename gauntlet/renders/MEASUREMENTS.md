@@ -12,7 +12,10 @@ channel, int16/32000) and reuses the gauntlet's own analysis primitives —
 below are exactly what the tool printed.
 
 Generated 2026-11-04 on branch `sound-bar-evidence` (base 89c647b). Gauntlet
-still 200/200.
+still 200/200. **Re-generated 2026-11-04 on branch `vcm-sweep-fix`** after the
+VCM-mid knee fix (LOG.md, "VCM MID fold-sweep fix"): only `vcm_mid_foldsweep.wav`
+and `default_note60.wav` changed (every other render byte-identical); the rows
+below are the tool's new output. Gauntlet 202/202.
 
 ## Method per quantity
 
@@ -45,11 +48,11 @@ band is specified under different conditions).
 | nto_saw | T03 | worst non-harmonic, 0–24 kHz | ≤ −30 dBc | -21.7 dBc @ 22325 Hz | **OUT** | -52.8 dBc @ 22925 Hz | IN | -12.4 dBc @ 8050 Hz | **OUT** |
 | nto_saw | info | f0 (BH-FFT peak, interpolated) | 1975 Hz | 1974.998 Hz | — | 1974.998 Hz | — | 1974.999 Hz | — |
 | nto_shape | T04 (extra) | harmonic centroid per shape step 1..8 (Hz) | strictly increasing | 223, 331, 460, 521, 472, 388, 341, 321 | **OUT** | 270, 295, 386, 429, 505, 661, 963, 1794 | IN | | |
-| vcm_mid_fold | T08 | odd harmonics ≥ −40 dBc at max fold (count) | ≥ 5 (re H1 and re max) | 15 re H1 / 8 re max | IN | 30 re H1 / 9 re max | IN | | |
-| vcm_mid_fold | T08 | odd:even energy at max fold | ≥ 12 dB | 71.7 dB | IN | 73.4 dB | IN | | |
-| vcm_mid_fold | T08 | harmonic centroid per fold step 1..8 (Hz) | strictly increasing | 229, 239, 262, 321, 502, 689, 1154, 1646 | IN | 265, 256, 275, 322, 451, 825, 1217, 1899 | **OUT** | | |
+| vcm_mid_fold | T08 | odd harmonics ≥ −40 dBc at max fold (count) | ≥ 5 (re H1 and re max) | 15 re H1 / 8 re max | IN | 26 re H1 / 11 re max | IN | | |
+| vcm_mid_fold | T08 | odd:even energy at max fold | ≥ 12 dB | 71.7 dB | IN | 73.7 dB | IN | | |
+| vcm_mid_fold | T08 | harmonic centroid per fold step 1..8 (Hz) | strictly increasing | 229, 239, 262, 321, 502, 689, 1154, 1646 | IN | 267, 276, 297, 345, 462, 801, 1215, 1882 | IN | | |
 | vcm_mid_fold | T08 (proxy) | transfer slope reversals at max fold (from waveform extrema) | ≥ 2 | 6.0 | IN | 6.0 | IN | | |
-| vcm_mid_fold | info | worst non-harmonic at max fold, 220 Hz (T08's AA band is specified at 1 kHz) | (−50 dBc @ 1 kHz) | -86.3 dBc | — | -73.7 dBc | — | | |
+| vcm_mid_fold | info | worst non-harmonic at max fold, 220 Hz (T08's AA band is specified at 1 kHz) | (−50 dBc @ 1 kHz) | -86.3 dBc | — | -80.3 dBc | — | | |
 | vcm_bot | T08 | even:odd energy at full depth | ≥ +12 dB | -73.0 dB | **OUT** | +36.0 dB | IN | | |
 | vcm_bot | info | H1..H8 dB re strongest | — | -9.5, -92.0, -6.5, -98.7, -3.3, -81.0, -2.1, -84.8 | — | -38.4, -0.8, -40.4, 0.0, -61.1, -3.1, -36.5, -37.7 | — | | |
 | vcfq_ping | T07 | ping decay peak→−40 dB, median per Q step (Q 2/6/15/35) | strictly increasing | 3.8, 10.7, 27.5, 64.4 ms | IN | 4.0, 10.8, 27.1, 64.1 ms | IN | | |
@@ -64,7 +67,7 @@ band is specified under different conditions).
 | ring | T09 | suppression of Y (modulator, ~80 Hz) re weaker sideband | 55–85 dB | 111.6 dB | **OUT** | 63.6 dB | IN | | |
 | ring | T09 | suppression of X (300 Hz sine) re weaker sideband | 55–85 dB | -10.4 dB | **OUT** | -8.6 dB | **OUT** | | |
 | ring | info | modulator frequency (from sideband spacing) | ~80 Hz | 79.9 Hz | — | 79.9 Hz | — | | |
-| default_voice | info | RMS 0.25–1.25 s (L) | — | 0.0770 | — | 0.0694 | — | | |
+| default_voice | info | RMS 0.25–1.25 s (L) | — | 0.0770 | — | 0.0697 | — | | |
 | default_voice | info | peak 3.0–4.5 s (tail) | — | 0.00000 | — | 0.00000 | — | | |
 
 ### v2-only supplementary (no v1 counterpart file)
@@ -85,9 +88,9 @@ band is specified under different conditions).
 |---|---|---|---|
 | T03 NTO alias floor 0–6 kHz ≤ −60 dBc | OUT (−26.5) | IN (−78.6) | yes |
 | T03 NTO alias floor 0–24 kHz ≤ −30 dBc | OUT (−21.7) | IN (−52.8) | yes |
-| T08 MID ≥ 5 odd harmonics ≥ −40 dBc | IN (15 / 8) | IN (30 / 9) | **no** — v1's ideal sin() folder also passes |
-| T08 MID odd:even ≥ 12 dB | IN (71.7) | IN (73.4) | **no** — both symmetric folders |
-| T08 MID centroid strictly rising over 8 fold steps | IN | **OUT** (265 → 256 Hz dip at step 2) | inverted — **v2 misses** |
+| T08 MID ≥ 5 odd harmonics ≥ −40 dBc | IN (15 / 8) | IN (26 / 11) | **no** — v1's ideal sin() folder also passes |
+| T08 MID odd:even ≥ 12 dB | IN (71.7) | IN (73.7) | **no** — both symmetric folders |
+| T08 MID centroid strictly rising over 8 fold steps | IN | IN (267 → 276 → 297 …; was OUT 265 → 256, fixed) | **no** — both rise |
 | T08 MID transfer folds ≥ 2 (proxy) | IN (6.0) | IN (6.0) | **no** |
 | T08 BOT even:odd ≥ +12 dB | OUT (−73.0) | IN (+36.0) | yes |
 | T07 ping decay monotonic in Q | IN | IN | **no** — v1 already obeys the law (3.8/10.7/27.5/64.4 vs 4.0/10.8/27.1/64.1 ms) |
@@ -96,21 +99,24 @@ band is specified under different conditions).
 | T09 Y suppression 55–85 dB (manifest patch) | OUT (111.6, above band) | IN (63.6) | yes (via the upper "bleed is a feature" edge) |
 | T09 X suppression 55–85 dB (manifest patch) | OUT (−10.4) | **OUT** (−8.6) | no — the patch is AM by construction (see below) |
 
-**v2 misses**
+**v2 misses** (item 1 fixed on `vcm-sweep-fix`; item 2 remains)
 
-1. **T08 MID centroid monotonicity — OUT.** Per-step centroid 265, 256, 275, 322,
-   451, 825, 1217, 1899 Hz: a 9 Hz dip from FOLD step 1 to 2. Diagnosed (scratch
-   probes, not committed): the NTO SINE is not a pure sine (H3 −36.9 dB, H5
-   −46.3 dB, THD 1.55 % — inside T04's 2 %), and at minimum fold those residual
-   harmonics dominate an amplitude-weighted centroid; the folder's gentle
-   low-drive curvature then partly cancels them at step 2. Jack-level centroids
-   of the same patch: VCA-0.8 feed 255, 245, 263 … (dip); NTO SINE direct at
-   2.5 V 249, 255, 288 … (monotonic, barely); an ideal 2.0 V sine 220, 237,
-   270 … (monotonic, as the gate test). So the module itself is monotonic, but
-   the manifest patch (real NTO sine at 0.8 depth via a VCA) is not. Reported
-   as OUT; nothing was retuned. The v1 manifest's own (different) centroid
+1. ~~**T08 MID centroid monotonicity — OUT.**~~ **Fixed (branch `vcm-sweep-fix`),
+   now IN: 267, 276, 297, 345, 462, 801, 1215, 1882 Hz.** First pass was 265,
+   **256**, 275, 322, 451, 825, 1217, 1899 Hz (a 9 Hz dip from FOLD step 1 to 2).
+   Root cause (probes, LOG.md "VCM MID fold-sweep fix"): the NTO SINE carries a
+   small kink at each peak (under-driven tri→sine shaper: H3 −36.9 dB, THD
+   1.55 %, inside T04; after the VCA H3 −40.7 dB). v2's folder was exactly
+   linear below |u| = 0.4 with a gentle knee above it. At step 2 the knee onset
+   lowered the slope under the peaks, so it smoothed away the kink's whole
+   harmonic series (and cancelled its H3/H5, which have the opposite sign)
+   before it added harmonics of its own. Centroid parts, step 1 → 2: H3 4.0 → 2.1, H5–9
+   9.2 → 5.9, H11–29 12.1 → 9.0, H30–100 16.5 → 14.3 Hz. Fix: knee rounding
+   w 0.6 → 1.0, so the folder is gently compressive from zero and its own
+   harmonics dominate the input's residue at every FOLD step. The measurement,
+   patch and band are unchanged. The v1 manifest's own (different) centroid
    method put v1's dip at step 1 (308 → 295 Hz); with the shared method v1 is
-   strictly rising — this quantity is sensitive to method at low fold.
+   strictly rising.
 2. **T09 X suppression on the manifest patch — OUT for both.** The manifest's
    modulator (DUSG2 cycling, 0..5 V) carries 2.5 V DC; v2's RING Y is
    DC-coupled by design (T09: "DC carrier → clean VCA/AM"), so the 300 Hz input
@@ -119,13 +125,13 @@ band is specified under different conditions).
    RING Y) v2 lands IN on both (Y 64.7 dB, X 73.7 dB), and the morph sweep is
    monotonic. v1 has no counterpart for either.
 
-**Bands that do not discriminate (v1 lands IN):** T08 MID odd count, odd:even
-and transfer folding; T07 ping law; T05d linearity; the T05e proxy. These were
+**Bands that do not discriminate (v1 lands IN):** T08 MID odd count, odd:even,
+centroid sweep (after the fix) and transfer folding; T07 ping law; T05d linearity; the T05e proxy. These were
 pre-registered as v1-out-of-band in GAUNTLET.md's wording, but v1's ideal
 `sin()` folder, its linear ramps and its SVF ping already satisfy them. The
 VCM-mid difference GAUNTLET.md anticipated is anti-aliasing (T08 −50 dBc @
 1 kHz), which no v1 file exercises; at the 220 Hz fold sweep v1 is actually
-*cleaner* (−86.3 dBc vs v2 −73.7 dBc), because v1's smooth `sin()` folder at
+*cleaner* (−86.3 dBc vs v2 −80.3 dBc; −73.7 before the knee fix), because v1's smooth `sin()` folder at
 0.8 depth stays band-limited while v2's 6-turnaround rounded cascade is far
 richer. The critic is the tiebreaker on those dimensions.
 
@@ -145,5 +151,5 @@ richer. The critic is the tiebreaker on those dimensions.
   files only document the limitation (v2 peak 0.0072 / v1 0.0019).
 
 **Level matching**: all pairs within ±1 dB RMS (`v2/MANIFEST.md`), except the
-near-silent `_monitor_direct` evidence pair and default_voice's peak (v2 0.588
+near-silent `_monitor_direct` evidence pair and default_voice's peak (v2 0.591
 vs v1 0.407, note-window RMS within 0.9 dB; v2 is the untouched default, not level-trimmed).

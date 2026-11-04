@@ -68,9 +68,12 @@ monitor** (src 15), level 0.5. Achieved f0 220.001 Hz.
 no attenuator, so the 0.8 depth is the VCA (its `kSatV` soft-sat adds a
 symmetric 3rd harmonic ≈ −46 dBc at 2 V). This is the closest patch-level
 translation; it matters — see the centroid finding in MEASUREMENTS.md.
-Centroid per step: 265, **256**, 275, 322, 451, 825, 1217, 1899 Hz (dip at
-step 2 → OUT of T08's monotonic band); max fold: 30 odd harmonics ≥ −40 dBc
-re H1 (9 re max), odd:even 73.4 dB, ≈ 6 transfer reversals.
+Centroid per step: 267, 276, 297, 345, 462, 801, 1215, 1882 Hz (strictly
+rising → IN of T08's monotonic band); max fold: 26 odd harmonics ≥ −40 dBc
+re H1 (11 re max), odd:even 73.7 dB, ≈ 6 transfer reversals.
+*Re-rendered on branch `vcm-sweep-fix`* after the VCM-mid knee fix (LOG.md):
+the first render went 265, **256**, 275, 322, 451, 825, 1217, 1899 Hz (OUT).
+The patch is unchanged.
 
 ## 4. `vcm_bot_full.wav` — VCM BOT @ full depth (T08)
 
@@ -136,8 +139,10 @@ See `supplementary/` for the bipolar-modulator and morph renders.
 (`velV = 100/127 × 5 V`), pitch 0 V, gate high 0.25 → 2.25 s, then 2.25 s
 tail. NTO free-runs at the default 261.63 Hz knob (achieved 261.609 Hz with
 drift 0.2; no KV cable in the default set, as in v1). Stereo.
-Peak 0.588, RMS L 0.0327 / R 0.0246; note-window (0.25–1.25 s) RMS 0.0694
-(v1 0.0770); tail after 3.0 s exactly 0.
+Peak 0.591, RMS L 0.0328 / R 0.0247; note-window (0.25–1.25 s) RMS 0.0697
+(v1 0.0770); tail after 3.0 s exactly 0. (Re-rendered on `vcm-sweep-fix`: the
+default voice runs through VCM MID. The first render had peak 0.588, RMS L 0.0327,
+note-window RMS 0.0694.)
 
 ---
 
@@ -166,13 +171,13 @@ to be unambiguously worst: −12.7 dBc in-band, −12.4 dBc full-band.
 |---|---|---|---|---|---|---|---|
 | nto_saw_1975.wav | 5.00 | 0.2725 | 0.12361 | 0.12776 | −0.29 dB | 0.5 / 0.8 | 0 |
 | nto_shape_sweep.wav | 8.00 | 0.1889 | 0.14101 | 0.14072 | +0.02 dB | 0.375 / 0.8 | 0 |
-| vcm_mid_foldsweep.wav | 8.00 | 0.2276 | 0.13189 | 0.14718 | −0.95 dB | 0.5 / 0.8 | 0 |
+| vcm_mid_foldsweep.wav | 8.00 | 0.2278 | 0.13622 | 0.14718 | −0.67 dB | 0.5 / 0.8 | 0 |
 | vcm_bot_full.wav | 5.00 | 0.2235 | 0.12619 | 0.12746 | −0.09 dB | 0.6 / 0.8 | 0 |
 | vcfq_ping.wav | 8.00 | 0.1145 | 0.00624 | 0.00568 | +0.82 dB | 0.15 / 0.8 | 0 |
 | dusg_cycle.wav | 5.00 | 0.2043 | 0.06509 | 0.06320 | +0.26 dB | 0.25 / 0.8 | 0 |
 | dusg_env_shape.wav | 6.50 | 0.2148 | 0.07318 | 0.07633 | −0.37 dB | (IN 2 path) / 0.4 | 0 |
 | dusg_env_shape_monitor_direct.wav | 6.50 | 0.0072 | 0.00413 | 0.00110 | +11.5 dB (both near-silent) | 0.25 / 0.8 | 0 |
 | ring_sines.wav | 5.00 | 0.2874 | 0.12974 | 0.12613 | +0.25 dB | 0.4 / 0.8 | 0 |
-| default_note60.wav | 4.50 | 0.5877 | 0.03270 | 0.03631 | −0.91 dB | defaults (0.53) | 0.2 |
+| default_note60.wav | 4.50 | 0.5907 | 0.03283 | 0.03631 | −0.88 dB | defaults (0.53) | 0.2 |
 
 No NaN/Inf in any render (checked at write time).

@@ -402,3 +402,100 @@ U01 rewritten (UX 24/24).
 - Side effects: bundle filenames become "Serge Animal TKB v2.{component,vst3,app}";
   the standalone's settings file becomes "Serge Animal TKB v2.settings".
   The REDESIGN_PLAN phase-0 / risk notes about the collision are now historical.
+
+## 2026-11-04 — VCM MID fold-sweep fix (sound-bar miss T08 centroid)
+
+Self-contained entry, branch `vcm-sweep-fix` (from `sound-bar-evidence`).
+
+- **The miss.** The sound bar measures `v2/vcm_mid_foldsweep.wav`: NTO SINE
+  220 Hz → VCA1 (LIN, LEVEL 0.8) → VCM MID IN 1, BIAS centred, FOLD stepped
+  k/7. The pre-registered band (T08: centroid strictly rising over 8 fold
+  steps) came out OUT: 265, **256**, 275, 322, 451, 825, 1217, 1899 Hz. The
+  ideal-sine gate test passed.
+- **Probes** (scratch, not committed; jack-level, 1 s Goertzel bank H1–H100
+  on the zero-crossing f0, the same centroid as the gate):
+  - Input. The NTO SINE is `sin(π/2·0.94·tri)`, an under-driven shaper. It
+    leaves a small kink at each peak, a long odd series in the same phase as a
+    triangle's: H3 −36.9, H5 −46.3, H21 −72, H51 −88 dBc, THD 1.55 % (inside
+    T04). The VCA's soft-sat is compressive, so it trims H3 to −40.7 dBc.
+  - The folder. With w = 0.6 the box-rounded transfer was exactly linear for
+    |u| < 0.4. FOLD step 1 (gain 0.5×, u peak 0.38 on the 1.92 V feed) sat
+    in that linear zone. Step 2 (0.74×, u 0.57) just entered the soft knee.
+  - Mechanism, step 1 → 2 at MID OUT. The centroid fell from 261.8 to 251.3
+    Hz. Split by band, the contributions above 220 Hz were H3 4.0 → 2.1,
+    H5–9 9.2 → 5.9, H11–29 12.1 → 9.0, and H30–100 16.5 → 14.3 Hz. H3 went
+    −40.7 → −46.4 dBc and H5 −46.8 → −53.9 dBc. Their phase flipped from
+    0° to 180°: the knee's compressive odd distortion has the opposite sign
+    and partly CANCELS the input's H3/H5. More broadly, the knee lowers the
+    slope under the peaks, where the kink lives. That smooths away the whole
+    residual series (H21 −72.6 → −77.7 dBc) before the knee adds much of its
+    own. Step 3 recovers (270 Hz).
+  - Level compensation is not involved. MID has none, only the static
+    peak normalisation `n`, which is fixed at configure time.
+  - Each stage in isolation, original folder, FOLD-knob centroids:
+    | feed | centroids (Hz) | result |
+    |---|---|---|
+    | VCA 0.8 feed | 262, 251, 270 … | dip |
+    | NTO direct, 2.43 V | 256, 262, 294 … | rises, barely |
+    | ideal sine | gate test, rising | rises |
+    VCA level scan 0.5–1.0 (1.24–2.42 V): worst step ratios 0.949 / 0.983 /
+    0.960 / 0.960 / 0.994 / 1.038, so the dip shows at every level below
+    ~2.4 V. The cause is the folder's linear zone plus late soft onset, which
+    meets an input whose peaks carry a kink. Neither the VCA nor the NTO is
+    out of spec on its own.
+  - Theory check. With a residual of opposite sign, any folder that starts
+    exactly linear and softens later has a gain range where its first
+    distortion only removes input harmonics. A ×1.486 FOLD step lands in that
+    range for most levels. The way out is the hardware behaviour: a
+    transistor folder is never perfectly linear, so its own harmonics outrun
+    the input's residue from the bottom of the knob.
+- **Fix** (`ModulesShapers.h`, VCM internals only, one constant):
+  `kFoldW` 0.6 → **1.0**. The first knee's box rounding now reaches the
+  origin, so near zero the transfer is u − 0.44·u|u|: gently compressive
+  from the first millivolt, with no clean linear zone. Turns, decay, shrink,
+  gain law, jacks and ctls are unchanged, and it is still one closed-form
+  ADAA2 kernel. Other options were scanned in an offline model of the
+  transfer (NTO shaper drive 0.92–0.98, 1.5–2.6 V, FOLD-knob and VC-FOLD
+  sweeps, ideal-sine ×1.215 steps):
+  - Sharper first knee: the dip gets deeper.
+  - Wider first knee only: smaller margins.
+  - An input scale on top of w = 1 (1.15–1.3): more margin, but the 997 Hz
+    max-fold alias test drops to −33…−54 dBc re H1, against −63 for w = 1
+    alone.
+  w = 1 alone was the best trade.
+- **After** (same probes):
+  | feed | centroids (Hz) | worst step ratio |
+  |---|---|---|
+  | VCA 0.8 feed | 263.2, 271.4, 291.5, 338.6, 457.6, 794.4, 1213.5, 1879.1 | 1.031 |
+  | NTO direct | 265.8, 279.0, 312.5, 391.5, 616.5, 1012.4, 1570.8, 2323.3 | 1.050 |
+  | ideal 2.0 V | 246.9, 262.6, 290.1 … | — |
+  VCA level scan 1.24–2.42 V: worst ratios 1.011 / 1.014 / 1.022 / 1.031 /
+  1.041 / 1.051, all rising. Gate (ideal 2.5 V) FOLD knob: 255, 276, 315,
+  401, 650, 1033, 1654, 2454 (was 228 … 2485). VC FOLD: 490 … 2454.
+  Max fold: 34 odd harmonics re H1 / 14 re max. Alias at 997 Hz:
+  **−63.4 dBc** re H1 (was −58.8; band −50). The 16× cap: −27.8 (info).
+- **Audible cost.** MID at minimum FOLD is no longer clean. A 2.5 V sine
+  now has 4.6 % THD (H3 −26.8 dBc), against 0.57 % before; v1's sin() folder
+  was ~2.6 %. At the default FOLD 0.3 THD goes 13.8 → 15.1 % and the
+  centroid 298 → 321 Hz.
+- **Default voice** (NTO VAR → VCM MID): T15 note 60 rms 0.0704 / peak
+  0.5943 → 0.0707 / 0.5974. Render `default_note60.wav`: peak 0.5877 → 0.5907,
+  RMS L 0.03270 → 0.03283, note-window RMS 0.0694 → 0.0697.
+- **Regression test** `t_vcm_ring::testMidRealSine`. It runs the real NTO
+  SINE into MID via VCA1 LIN 0.8 (the manifest patch) and direct, over 8 FOLD
+  steps, and requires the centroid to rise strictly. It FAILS on the old
+  kernel (VCA feed, worst ratio 0.960) and passes now.
+- **Sound bar re-run** (`satk_render`, `satk_measure`): only
+  `vcm_mid_foldsweep.wav` and `default_note60.wav` changed; every other WAV
+  is byte-identical.
+  - The band is now **IN**: 267, 276, 297, 345, 462, 801, 1215, 1882 Hz.
+  - MID count 26/11, odd:even 73.7 dB, reversals 6.0, 220 Hz max-fold
+    non-harmonic −80.3 dBc (was −73.7).
+  - Every other v2 band is unchanged. The only v2 OUT is still T09 X
+    suppression on the unipolar-modulator manifest patch, which is explained
+    in MEASUREMENTS.md.
+  - Spectrograms for the 2 files were regenerated with the same ffmpeg
+    settings. The blind packet `judge/sound-r1` was left as issued, so its
+    vcm_mid_fold and default_voice pair now predates this fix.
+- Gauntlet **202/202** (+2), UX unchanged. Zero warnings in our sources. T16
+  stub-baseline perf 40.0× realtime; VCM bare 934 cyc/smp (3× bound 1656).
