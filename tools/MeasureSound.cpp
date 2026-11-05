@@ -66,6 +66,31 @@ double refineF0 (const Buf& x, double nominal)
     return ((double) best + d) * bin;
 }
 
+// f0 for a signal whose fundamental may be absent (VCM BOT at full depth is
+// ~all H8): the strongest interpolated peak among harmonics 1..hMax of the
+// nominal, divided by its order. (Round-2 measurement fix: refining at the
+// nominal alone locked onto noise when H1 is -110 dB, and the harmonic bank
+// then ran off-frequency -> leakage read as H1 -38 dB.)
+double refineF0Harm (const Buf& x, double nominal, int hMax)
+{
+    const auto m = t_nto::spectrum (x);
+    const double bin = SR / (double) x.size();
+    double bestAmp = -1.0, bestF = nominal;
+    for (int h = 1; h <= hMax; ++h)
+    {
+        const double fn = nominal * h;
+        size_t best = 0;
+        for (size_t k = (size_t) (0.99 * fn / bin); k <= (size_t) (1.01 * fn / bin) && k + 1 < m.size(); ++k)
+            if (best == 0 || m[k] > m[best]) best = k;
+        if (best == 0 || m[best] <= bestAmp) continue;
+        bestAmp = m[best];
+        const double a = std::log (m[best - 1] + 1e-30), b = std::log (m[best] + 1e-30), c = std::log (m[best + 1] + 1e-30);
+        const double d = 0.5 * (a - c) / (a - 2 * b + c);
+        bestF = ((double) best + d) * bin / h;
+    }
+    return bestF;
+}
+
 // harmonic amplitudes 1..nH over an integer number of periods of f0 (Goertzel
 // bank from t_vcm_ring: leakage-free on whole periods)
 std::vector<double> harmonicsWin (const Buf& x, double f0, int nH)
@@ -163,15 +188,23 @@ double transferReversals (const Buf& w, double f0)
 
 std::vector<Cell> mVcmMid (const Buf& x)
 {
-    std::vector<double> c, aMax;
-    double f0max = 220.0;
+    std::vector<double> c, aMax, lvl;
+    double f0max = 220.0, thd1 = 0.0;
     for (int k = 0; k < 8; ++k)
     {
         const double f0 = refineF0 (sliceN (x, k + 0.2, 32768), 220.0);
-        const auto a = harmonicsWin (slice (x, k + 0.2, 0.75), f0, 100);
+        const auto w = slice (x, k + 0.2, 0.75);
+        const auto a = harmonicsWin (w, f0, 100);
         c.push_back (t_vcm_ring::centroid (a, f0));
+        lvl.push_back (gauntlet::db (wavio::rms (w), 1.0));
+        if (k == 0)
+        {
+            double s2 = 0; for (int h = 2; h <= 40; ++h) s2 += a[(size_t) h] * a[(size_t) h];
+            thd1 = 100.0 * std::sqrt (s2) / std::max (a[1], 1e-12);
+        }
         if (k == 7) { aMax = a; f0max = f0; }
     }
+    const double lvlSpan = *std::max_element (lvl.begin(), lvl.end()) - *std::min_element (lvl.begin(), lvl.end());
     const double s = strongestOf (aMax);
     int oddFund = 0, oddMax = 0;
     for (size_t h = 1; h < aMax.size(); h += 2)
@@ -188,19 +221,33 @@ std::vector<Cell> mVcmMid (const Buf& x)
              cell (fmt ("%.1f dB", oe), oe >= 12.0),
              cell (list (c), strictlyIncreasing (c)),
              cell (fmt ("%.1f", rev), rev >= 2.0),
-             info (fmt ("%.1f dBc", alias)) };
+             info (fmt ("%.1f dBc", alias)),
+             info (fmt ("%.2f %%", thd1)),
+             info (list (lvl, "%.1f") + fmt (" (span %.1f dB)", lvlSpan)) };
 }
 
 std::vector<Cell> mVcmBot (const Buf& x)
 {
-    const double f0 = refineF0 (sliceN (x, 0.5, 65536), 220.0);
-    const auto a = harmonicsWin (slice (x, 0.5, 4.0), f0, 100);
+    // steady state 1.0-4.5 s (round-2 fix: past any onset/fade-in and the
+    // output DC blocker's settling); f0 from the strongest harmonic
+    const double f0 = refineF0Harm (sliceN (x, 1.0, 65536), 220.0, 16);
+    const auto a = harmonicsWin (slice (x, 1.0, 3.5), f0, 100);
     double odd, even; t_vcm_ring::oddEvenEnergy (a, odd, even);
     const double eo = 10.0 * std::log10 (even / std::max (odd, 1e-30));
     const double s = strongestOf (a);
-    std::vector<double> h18;
-    for (int h = 1; h <= 8; ++h) h18.push_back (gauntlet::db (a[(size_t) h], s));
-    return { cell (fmt ("%+.1f dB", eo), eo >= 12.0), info (list (h18, "%.1f")) };
+    std::vector<double> h116;
+    size_t hs = 1;
+    for (size_t h = 1; h < a.size(); ++h) if (a[h] > a[hs]) hs = h;
+    for (int h = 1; h <= 16; ++h) h116.push_back (gauntlet::db (a[(size_t) h], s));
+    const auto sp = sliceN (x, 1.0, 65536);
+    const auto m = t_nto::spectrum (sp);
+    double fi = 0;
+    // worst non-harmonic re the STRONGEST harmonic (worstNonHarmonic is re H1)
+    const double reH1 = t_nto::worstNonHarmonic (m, sp.size(), f0, 24000.0, 20.0, &fi);
+    const double reMax = reH1 + gauntlet::db (t_nto::peakNear (m, sp.size(), f0, 3.0), t_nto::peakNear (m, sp.size(), f0 * (double) hs, 3.0));
+    return { cell (fmt ("%+.1f dB", eo), eo >= 12.0), info (list (h116, "%.0f")),
+             info (fmt ("H%.0f", (double) hs)),
+             info (fmt ("%.1f dB", reMax) + fmt (" @ %.0f Hz", fi)) };
 }
 
 std::vector<Cell> mPing (const Buf& x)
@@ -305,9 +352,23 @@ std::vector<Cell> mRing (const Buf& x)
     const double lsb = t_nto::peakNear (m, n, 300.0 - fy, 3.0), usb = t_nto::peakNear (m, n, 300.0 + fy, 3.0);
     const double car = t_nto::peakNear (m, n, fy, 3.0), sig = t_nto::peakNear (m, n, 300.0, 3.0);
     const double sY = gauntlet::db (std::min (lsb, usb), car), sX = gauntlet::db (std::min (lsb, usb), sig);
+    // strongest component 30 Hz .. 2 kHz, the modulator leak and the X±2·fY
+    // products (a pure multiplier fed a symmetric triangle has none) re it
+    double strongest = 0;
+    for (size_t k = (size_t) (30.0 / bin); k < (size_t) (2000.0 / bin); ++k) strongest = std::max (strongest, m[k]);
+    const double p2l = t_nto::peakNear (m, n, 300.0 - 2.0 * fy, 3.0), p2u = t_nto::peakNear (m, n, 300.0 + 2.0 * fy, 3.0);
     return { cell (fmt ("%.1f dB", sY), sY >= 55.0 && sY <= 85.0),
              cell (fmt ("%.1f dB", sX), sX >= 55.0 && sX <= 85.0),
-             info (fmt ("%.1f Hz", fy)) };
+             info (fmt ("%.1f Hz", fy)),
+             info (fmt ("%.1f dB", gauntlet::db (car, strongest))),
+             info (fmt ("%.1f", gauntlet::db (p2l, strongest)) + fmt (" / %.1f dB", gauntlet::db (p2u, strongest))) };
+}
+// listening-only patch (unipolar modulator): same numbers, informational
+std::vector<Cell> mRingInfo (const Buf& x)
+{
+    auto c = mRing (x);
+    for (auto& e : c) e.v = Verdict::Info;
+    return c;
 }
 
 std::vector<Cell> mRingMorph (const Buf& x)
@@ -358,7 +419,17 @@ std::vector<Cell> mEndDuty (const Buf& x)
 
 std::vector<Cell> mDefault (const Buf& x)
 {
-    return { info (fmt ("%.4f", wavio::rms (slice (x, 0.25, 1.0)))), info (fmt ("%.5f", wavio::peak (slice (x, 3.0, 1.5)))) };
+    // round-2 fix: RMS over the SOUNDING span (first..last sample above 1 %
+    // of the file peak) instead of a fixed 1 s window that was ~75 % silence
+    // for a ~250 ms pluck
+    const double thr = 0.01 * wavio::peak (x);
+    size_t a = 0, b = x.size();
+    while (a < x.size() && std::fabs (x[a]) <= thr) ++a;
+    while (b > a && std::fabs (x[b - 1]) <= thr) --b;
+    const Buf span (x.begin() + (long) a, x.begin() + (long) b);
+    return { info (fmt ("%.4f", wavio::rms (span)) + fmt (" over %.3f s", (double) span.size() / SR)),
+             info (fmt ("%.4f", wavio::peak (x))),
+             info (fmt ("%.5f", wavio::peak (slice (x, 3.0, 1.5)))) };
 }
 
 void runAll()
@@ -376,11 +447,15 @@ void runAll()
                { "T08", "odd:even energy at max fold", "≥ 12 dB" },
                { "T08", "harmonic centroid per fold step 1..8 (Hz)", "strictly increasing" },
                { "T08 (proxy)", "transfer slope reversals at max fold (from waveform extrema)", "≥ 2" },
-               { "info", "worst non-harmonic at max fold, 220 Hz (T08's AA band is specified at 1 kHz)", "(−50 dBc @ 1 kHz)" } },
+               { "info", "worst non-harmonic at max fold, 220 Hz (T08's AA band is specified at 1 kHz)", "(−50 dBc @ 1 kHz)" },
+               { "info", "THD at minimum fold (step 1, H2..H40)", "—" },
+               { "info", "RMS per fold step 1..8 (dBFS)", "—" } },
              mVcmMid);
     measure ("vcm_bot", "vcm_bot_full.wav",
-             { { "T08", "even:odd energy at full depth", "≥ +12 dB" },
-               { "info", "H1..H8 dB re strongest", "—" } },
+             { { "T08", "even:odd energy at full depth (steady state 1.0–4.5 s)", "≥ +12 dB" },
+               { "info", "H1..H16 dB re strongest", "—" },
+               { "info", "strongest harmonic", "H8 (3 octave stages)" },
+               { "info", "worst non-harmonic re strongest harmonic, 0–24 kHz", "—" } },
              mVcmBot);
     measure ("vcfq_ping", "vcfq_ping.wav",
              { { "T07", "ping decay peak→−40 dB, median per Q step (Q 2/6/15/35)", "strictly increasing" },
@@ -388,9 +463,13 @@ void runAll()
                { "info", "ring frequency, first Q=35 ping (zero crossings)", "fc = 800 Hz" } },
              mPing);
     measure ("dusg_cycle", "dusg_cycle.wav",
-             { { "T05e (proxy)", "rising fraction of the cycle, rise = fall dialed (only END-duty evidence in the pair set)", "0.50 ± 0.01" },
+             { { "T05c (info)", "rising fraction of the MAIN OUT cycle, rise = fall dialed (slope symmetry; not END)", "0.50 ± 0.01" },
                { "info", "cycle frequency", "200 Hz" } },
              mDusgCycle);
+    // round-2 fix: T05e is measured on END itself (pair renders, both versions)
+    measure ("dusg_end", "supplementary/dusg_end_duty.wav",
+             { { "T05e", "END duty at rise/(rise+fall) = .05/.25/.50/.75/.95", "tracks ratio ±0.01" } },
+             mEndDuty);
     measure ("dusg_env", "dusg_env_shape.wav",
              { { "T05d", "mid-80 % rise deviation from a line (worst of 3)", "≤ 3 % FS" },
                { "info", "mid-80 % fall deviation from a line (worst of 3)", "—" },
@@ -399,13 +478,27 @@ void runAll()
     measure ("dusg_env_direct", "dusg_env_shape_monitor_direct.wav",
              { { "info", "slow envelope straight through the monitor bus", "—" } },
              mDusgDirect);
-    measure ("ring", "ring_sines.wav",
-             { { "T09", "suppression of Y (modulator, ~80 Hz) re weaker sideband", "55–85 dB" },
-               { "T09", "suppression of X (300 Hz sine) re weaker sideband", "55–85 dB" },
-               { "info", "modulator frequency (from sideband spacing)", "~80 Hz" } },
-             mRing);
+    // T09 band patch (amended 2026-11-05 with Mark's approval): the BIPOLAR
+    // (AC-coupled) modulator render; the unipolar ring_sines patch is
+    // listening material only (informational rows)
+    measure ("ring", "supplementary/ring_bipolar.wav",
+             { { "T09", "suppression of Y (modulator, ~80 Hz) re weaker sideband (bipolar modulator)", "55–85 dB" },
+               { "T09", "suppression of X (300 Hz sine) re weaker sideband (bipolar modulator)", "55–85 dB" },
+               { "info", "modulator frequency (from sideband spacing)", "~80 Hz" },
+               { "info", "modulator (~80 Hz) leak re strongest component", "—" },
+               { "info", "X ± 2·fY products (≈140 / 460 Hz) re strongest", "—" } },
+             mRing, "control/ring_bipolar_leaky.wav");
+    measure ("ring_unipolar", "ring_sines.wav",
+             { { "info", "Y suppression re weaker sideband (unipolar 0..5 V modulator: AM by construction)", "(listening only)" },
+               { "info", "X suppression re weaker sideband (unipolar modulator)", "(listening only)" },
+               { "info", "modulator frequency", "~80 Hz" },
+               { "info", "modulator (~80 Hz) leak re strongest component", "—" },
+               { "info", "X ± 2·fY products (≈140 / 460 Hz) re strongest", "—" } },
+             mRingInfo);
     measure ("default_voice", "default_note60.wav",
-             { { "info", "RMS 0.25–1.25 s (L)", "—" }, { "info", "peak 3.0–4.5 s (tail)", "—" } },
+             { { "info", "RMS over the sounding span (|x| > 1 % of peak), L", "—" },
+               { "info", "peak (L)", "—" },
+               { "info", "peak 3.0–4.5 s (tail)", "—" } },
              mDefault);
 }
 
@@ -421,14 +514,8 @@ std::vector<Row> runSupplementary()
         for (size_t i = 0; i < rows.size() && i < cells.size(); ++i)
             out.push_back ({ file, rows[i][0], rows[i][1], rows[i][2], { { "v2", cells[i] } } });
     };
-    add ("ring_bipolar.wav",
-         { { "T09", "suppression of Y re weaker sideband (bipolar modulator)", "55–85 dB" },
-           { "T09", "suppression of X re weaker sideband (bipolar modulator)", "55–85 dB" },
-           { "info", "modulator frequency", "~80 Hz" } }, mRing);
     add ("ring_morph_sweep.wav",
          { { "T09", "morph 9 steps: X falls, sidebands rise", "strictly monotonic" } }, mRingMorph);
-    add ("dusg_end_duty.wav",
-         { { "T05e", "END duty at rise/(rise+fall) = .05/.25/.50/.75/.95", "tracks ratio ±0.01" } }, mEndDuty);
     return out;
 }
 

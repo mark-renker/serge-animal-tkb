@@ -499,3 +499,124 @@ Self-contained entry, branch `vcm-sweep-fix` (from `sound-bar-evidence`).
     vcm_mid_fold and default_voice pair now predates this fix.
 - Gauntlet **202/202** (+2), UX unchanged. Zero warnings in our sources. T16
   stub-baseline perf 40.0× realtime; VCM bare 934 cyc/smp (3× bound 1656).
+
+## 2026-11-05 — Sound bar round 2 (fixes for the sound-r1 blind critic)
+
+Self-contained entry, branch `sound-r2` (from `vcm-sweep-fix` e219bf1).
+
+- **T09 band amendment — approved by Mark.** The ring suppression band
+  (55–85 dB, Y and X re the weaker sideband) is now measured on the
+  **bipolar (AC-coupled) modulator** render `supplementary/ring_bipolar.wav`.
+  The v1 unipolar `ring_sines` patch stays as listening material only
+  (informational rows). To make the band a real pair, v1's bipolar render
+  (and a v1 END-duty render, below) were added to
+  `legacy/render_gauntlet.cpp` → `renders/v1/supplementary/`; the same Faust
+  2.85.9 build re-renders the ten phase-0 v1 files byte-identically.
+- **Measurement-bug fixes** (`satk_measure`; no band moved): (1) `vcm_bot`
+  refined f0 at 220 Hz where BOT has no energy → off-frequency harmonic bank;
+  "H1 −38.4 dB" was leakage (steady state −96 … −116). f0 now from the
+  strongest of H1..H16, window 1.0–4.5 s. (2) `default_voice` RMS window was
+  ~75 % silence → RMS over the sounding span. (3) the `dusg_cycle` "T05e"
+  row read MAIN OUT → relabelled T05c (info); T05e is measured on END in the
+  new `dusg_end` pair (v1 END is a fixed pulse: duty 0.200 at every ratio,
+  OUT; v2 0.050/0.250/0.500/0.750/0.950, IN).
+- **Finding 1 — VCM BOT on the wrong orders.** Root cause: each stage was
+  `2·|y| − env`. A rectified sine is not half-wave symmetric (zero crossings
+  at 30°/150°), so the next stage cannot double it again: its minima are
+  uneven and the energy spreads over H2/H4/H6/H10/H12 with H8 starved
+  (ideal 2.5 V sine, full depth: H2 −1, H4 0, H6 −2, H8 −12, H10 0, H12 0;
+  render: strongest H10, H8 −42 dB). The per-stage peak followers also sagged
+  ~4 % per 220 Hz period, and the linear crossfade dipped up to 3.2 dB
+  between stages. Fix (`ModulesShapers.h`, internals only): the input is
+  normalised by a ripple-free peak (max over a sliding 50–100 ms window,
+  instant attack, 5 ms release), and every stage is the level-compensated
+  square-law full-wave rectifier `r(y) = 2y² − 1`, which maps ±1 onto ±1 and
+  keeps the doubled wave centred, so a sine goes H1 → H2 → H4 → H8 (T2∘T2∘T2
+  = T8). Depth crossfades stage by stage with power compensation. The whole
+  cascade is one degree-8 polynomial of u, ADAA1 as one kernel, rebuilt only
+  on depth changes. SQ out and the rail limiter are unchanged in structure.
+  After: ideal sine depth 1/3 → H2, 2/3 → H4 (next −77 dB), 1 → H8 (next
+  −71 dB); level over 13 depth steps within 0.01 dB (r1 3.2 dB); render H8
+  0, H6/H10 −24, H4 −58, H12 −53 dB (the H6/H10 pair is the ×8 phase
+  sensitivity to the feed's own small H3), even:odd +95.0 dB, worst
+  non-harmonic −119 dB re strongest. Critic notes checked: the −35.8 dBc
+  18.3 kHz grid and the ~150 ms fade-in are both in **v1's** file (v1 peak
+  0.158 → 0.224 over 150 ms; v2 r1 0.221 from the first 50 ms). SQ: corr
+  with BOT 0.933, rail dwell 0.88, duty span 0.147 (T08 checks pass).
+- **Finding 2 — RING leakage and X ± 2·fY products.** Root cause of the
+  products: the core was `tanh(0.35·X)·tanh(0.35·Y)`; an offset 0..5 V
+  carrier sits on the tanh's curvature, which grows the carrier's 2nd
+  harmonic → 300 ± 160 Hz at −33 dB re strongest at the RING jack (the bleed
+  model is linear and was not involved). The ~80 Hz leak (−72 dB re
+  strongest) was exactly the default Y bleed (−70.6 dB re input). Fix:
+  linear-then-soft input stages (`LinSoftKernel`: exactly linear to ±5 V,
+  tanh shoulder above, ADAA1) and the bleed law retuned to
+  `−102 + 62·√trim` dB → trim 0 −102, **default −78.0** (still inside the
+  SPEC §4.6 −60..−80 band; ≈ the documented 80 dB rejection), max −40.
+  After (unipolar patch at the jack): 80 Hz −72.1 → −80.3, 140/460 Hz
+  −33.3/−33.1 → −104.6/−109.4 dB re strongest. In the render file the
+  products read −48.9 dB: that residue is the shared OUT-bus `fastTanh`
+  limiter (out of scope). T09: suppression 64.4 → 72.0 dB, DC-carrier VCA
+  r² 0.996 → 1.0000, THD 1.0 % → 0. Band patch note: the bipolar render's
+  VCFQ coupler itself soft-clips the offset triangle (2nd harmonic −30 dBc
+  at unity GAIN), so the patch runs it at GAIN 0.15 (0.3×, −51 dBc) in both
+  versions. Band: Y 72.3 dB IN, X 59.2 dB IN (v1 116.9 OUT / 71.1 IN).
+- **Finding 3 — VCM MID: clean minimum fold AND rising sweep, held level.**
+  Root cause (as the brief suspected): the 2026-11-04 knee widening (w 1.0)
+  was a workaround for the NTO SINE's peak kink (`sin(π/2·0.94·tri)`), whose
+  long odd residue had the opposite sign to the folder knee. Fix at the
+  source (`ModulesNTO.h`, internals only): SINE = `sin(π/2·tri)` on the
+  unrounded triangle (an exact sine of the core phase; the shaper's zero
+  slope makes the corner smooth) plus a smooth compressive residual
+  `s − 0.01·s³` (H3 only, THD 0.25 %; T04 ≤ 2 % and the > 0.2 % info bound
+  pass; T02 amplitude intact). VAR keeps its 0.94 shaper start, so VAR and
+  the T04 shape sweep are byte-for-byte unchanged. Folder: knees are now a
+  **triangle-kernel** smoothing of half-support W 0.8 (C2 knees, linear zone
+  |u| < 0.2; f/F1/F2 = second differences of P2/P3/P4, still one ADAA2
+  kernel), and the section has a **level-compensation makeup** vs fold gain
+  (tabulated from the kernel's own sine RMS, 32 points/oct over 0.5×–16×,
+  unity at the default FOLD 0.3 so the default voice keeps its level,
+  capped at 2× so fold peaks stay ≤ 5 V). Box knees at w 0.6/0.65/0.7 and
+  triangle W 0.6/0.9/1.0/1.2/1.4 were scanned: W 0.8 was the best trade of
+  min-fold THD, centroid margin and alias floor (W 0.9 has a −50 dBc alias
+  spike at a 2.0 V feed).
+  After: ideal 2.5 V sine at minimum FOLD THD **4.61 % → 0.85 %**; render
+  step 1 2.77 % → 1.28 % (NTO + VCA residue included). Render centroid 267,
+  276, 297, 345, 462, 801, 1215, 1882 → **241, 248, 265, 311, 457, 870, 1252,
+  1995 Hz**. `testMidRealSine` worst step ratio via VCA 1.031 → 1.028, direct
+  1.050 → 1.053; VCA level scan 0.5–1.0: 1.006 / 1.012 / 1.020 / 1.028 /
+  1.037 / 1.047 (all rising). Gate centroid: FOLD 226 … 2477 Hz, VC 481 …
+  2477 Hz. Per-step RMS (render) −18.5, −18.3, −17.6, −16.0, −14.9, −16.3,
+  −15.8, −17.6 dBFS: span **6.6 → 3.6 dB**; ideal 2.5 V sine 6.2 dBV flat to
+  step 7, 4.2 at max fold (cap). Alias 997 Hz max fold −63.4/−87.0 →
+  **−56.9/−78.3 dB** re H1/strongest (band −50); 16× cap −25.0 (info).
+- **Tests** (`t_vcm_ring.h`, strengthened, +8 checks): MID min-fold THD
+  ≤ 1.5 %; MID level span ≤ 4 dB over the FOLD knob (ideal) and over the
+  sound-bar sweep (real sine via VCA 0.8); BOT octave cascade H2/H4/H8
+  dominant ≥ 20 dB at depth 1/3, 2/3, 1; BOT level over 13 depth steps
+  ≤ 1.5 dB; BOT no fade-in; RING unipolar carrier X ± 2fY ≤ −80 dB and 3fX
+  ≤ −80 dB. One existing check changed meaning: "MID transfer bounded at
+  the ±2.5 V fold peaks" is now "±2.5 V × makeup, makeup ≤ 2" (the static
+  ramp at max fold peaks at 5.0 V by design of the level compensation; the
+  T08 gate itself — ≥ 2 slope reversals — is unchanged).
+- **Default voice** (NTO VAR → VCM MID → VCFQ → VCA): VAR unchanged; MID
+  makeup is exactly 1 at the default FOLD; only the knee shape changes. T15
+  note 60 rms/peak 0.0707/0.5974 → **0.0698/0.5887**. Render
+  `default_note60.wav` peak 0.5907 → 0.5823, RMS L 0.03283 → 0.03241; first
+  100 ms of the note: H3 −10.5 → −11.3 dBc, H5 −30.6 → −32.8 dBc, centroid
+  718 → 711 Hz — marginally less bright, otherwise the same voice.
+- **Renders / packet.** `satk_render` re-run (deterministic, `cmp`-verified):
+  changed `vcm_mid_foldsweep`, `vcm_bot_full`, `ring_sines`, `dusg_env_shape`
+  (NTO SINE carrier), `default_note60`, `supplementary/ring_bipolar`,
+  `ring_morph_sweep`; monitor levels re-trimmed to keep pairs within ±1 dB
+  (MID 0.41, BOT 0.52, ring_sines 0.35, bipolar 1.0). New negative control
+  `control/ring_bipolar_leaky.wav` (bare X·Y with −20 dB of both inputs
+  leaking: Y 14.4 dB / X 0.9 dB suppression). Spectrograms regenerated with
+  the same ffmpeg settings. Blind packet `judge/sound-r2/` (new A/B draws, the
+  bipolar ring pair, the new control as `ring_C`; key in
+  `judge/KEY-sound-r2.md`).
+- Gauntlet **210/210** (+8), UX 24/24, zero warnings in our sources (full
+  Release build). Perf (same-session runs, ±15 % noise): VCM bare 1174 → 917 cyc/smp (3× bound 1656), RING
+  527 → 200; T16 stub baseline 38.7× → 38.2× (≥ 6×); scratch full-engine check
+  (default patch + BOT/TOP/RING patched, min of 5 × 10 s, -O3) 30.8× vs
+  28.7× before.

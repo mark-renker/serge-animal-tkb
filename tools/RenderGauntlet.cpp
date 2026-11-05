@@ -40,7 +40,8 @@ namespace {
 using namespace satk;
 constexpr int kSR = 48000;
 constexpr uint64_t kSeed = kDefaultInstanceSeed;
-constexpr float kRingMonLvl = 0.4f; // level-matched to v1 RMS (convention 0.5 -> +2.1 dB)
+constexpr float kRingMonLvl = 0.35f;    // ring_sines, level-matched to v1 RMS (r2: 0.4 -> 0.35, linear core)
+constexpr float kRingBipMonLvl = 1.0f;  // ring_bipolar/morph, level-matched to v1's bipolar render
 
 struct Ev { long at; std::function<void()> fn; };
 
@@ -144,7 +145,7 @@ void renderV2()
     }
     { // 3. NTO SINE -> (VCA 0.8) -> VCM MID IN 1, BIAS centred, FOLD stepped k/7
         Job j; j.drift (0.0f); vcmFeed (j, VCM::jMidIn1);
-        j.monitor (15, 0.5f);
+        j.monitor (15, 0.41f); // level-matched (r2: MID level compensation, convention 0.5 -> +1.7 dB)
         VCM* v = j.sys.vcm;
         v->ctls[VCM::cBias].v = 0.5f;
         for (int k = 0; k < 8; ++k) j.at (k, [v, k] { v->ctls[VCM::cFold].v = (float) k / 7.0f; });
@@ -154,7 +155,7 @@ void renderV2()
     { // 4. NTO SINE -> (VCA 0.8) -> VCM BOT IN 1, BOT DEPTH full
         Job j; j.drift (0.0f); vcmFeed (j, VCM::jBotIn1);
         j.sys.vcm->ctls[VCM::cBotDepth].v = 1.0f;
-        j.monitor (16, 0.6f); // level-matched (convention 0.5 -> -1.6 dB vs v1 RMS)
+        j.monitor (16, 0.52f); // level-matched (r2 cascade; r1 used 0.6)
         render (j, "v2/vcm_bot_full.wav", 5.0);
     }
     { // 5. TKB GATE (internal clock 2 Hz, GATE LEN 20 ms) -> VCFQ TRIG; fc 800 Hz;
@@ -243,27 +244,35 @@ void renderV2()
     }
 }
 
-// v2-only supplementary patches (no v1 counterpart is possible or rendered).
+// Bipolar ~80 Hz modulator: DUSG2 triangle AC-coupled through VCFQ HP
+// (fc 20 Hz, Q 0.5) — the patch-level way to strip the unipolar DC.
+// VCFQ GAIN 0.15 (0.3x): the VCFQ input stage soft-clips, and a 0..5 V
+// offset triangle at unity gain comes out of it with its own 2nd
+// harmonic at -30 dBc (-> X ± 2·fY products that are the coupler's, not
+// the ring's); at 0.3x it is ~-51 dBc. Same setting in v1's render.
+void bipolarRing (Job& j)
+{
+    j.drift (0.0f); j.ntoHz (300.0);
+    DUSG* d = j.sys.dusg2;
+    d->ctls[DUSG::cCycle].v = 1.0f;
+    d->ctls[DUSG::cRise].v = t_dusg_ssg::dial (0.00625);
+    d->ctls[DUSG::cFall].v = t_dusg_ssg::dial (0.00625);
+    VCFQ* f = j.sys.vcfq;
+    f->ctls[VCFQ::cFreq].v = 0.0f;                    // 20 Hz
+    f->ctls[VCFQ::cQ].v = t_vcfq::qKnob (0.5);
+    f->ctls[VCFQ::cGain].v = 0.15f;                    // 0.3x (near-linear coupler)
+    j.sys.patch (d, DUSG::jOut, f, VCFQ::jIn);
+    j.sys.patch (f, VCFQ::jHp, j.sys.ring, RING::jY);
+    j.sys.patch (j.sys.nto, NTO::jSine, j.sys.ring, RING::jX);
+    j.monitor (17, kRingBipMonLvl);
+}
+
+// Supplementary patches (v1 counterparts of ring_bipolar / dusg_end_duty are
+// rendered by legacy/render_gauntlet.cpp into v1/supplementary/ since round 2;
+// ring_morph_sweep stays v2-only: v1 has no morph control).
 void renderSupplementary()
 {
     std::printf ("v2-only supplementary -> %s/v2/supplementary\n", gDir.c_str());
-    // Bipolar ~80 Hz modulator: DUSG2 triangle AC-coupled through VCFQ HP
-    // (fc 20 Hz, Q 0.5) — the patch-level way to strip the unipolar DC.
-    auto bipolarRing = [] (Job& j)
-    {
-        j.drift (0.0f); j.ntoHz (300.0);
-        DUSG* d = j.sys.dusg2;
-        d->ctls[DUSG::cCycle].v = 1.0f;
-        d->ctls[DUSG::cRise].v = t_dusg_ssg::dial (0.00625);
-        d->ctls[DUSG::cFall].v = t_dusg_ssg::dial (0.00625);
-        VCFQ* f = j.sys.vcfq;
-        f->ctls[VCFQ::cFreq].v = 0.0f;                    // 20 Hz
-        f->ctls[VCFQ::cQ].v = t_vcfq::qKnob (0.5);
-        j.sys.patch (d, DUSG::jOut, f, VCFQ::jIn);
-        j.sys.patch (f, VCFQ::jHp, j.sys.ring, RING::jY);
-        j.sys.patch (j.sys.nto, NTO::jSine, j.sys.ring, RING::jX);
-        j.monitor (17, kRingMonLvl);
-    };
     { // S1. RING with a bipolar modulator, MORPH = 1 (full ring, default)
         Job j; bipolarRing (j);
         render (j, "v2/supplementary/ring_bipolar.wav", 5.0);
@@ -317,6 +326,28 @@ void renderControl()
     render (j, "control/nto_saw_1975_naive_zoh12k.wav", 5.0);
 }
 
+// Round-2 negative control (sound-r2 packet, ring piece): the ring_bipolar
+// patch through the v2 OUT monitor bus, but the RING monitor tap re-pointed
+// at a degraded "ring": a bare product X·Y with -20 dB of BOTH inputs leaking
+// straight through (an untrimmed, badly balanced modulator: ~20 dB carrier
+// rejection against the documented 80 dB). Reads the same X (NTO SINE) and Y
+// (VCFQ HP) jacks the real RING sees; level-matched to the pair.
+void renderControlRing()
+{
+    Job j; bipolarRing (j);
+    j.monitor (17, 0.8f);
+    static float leaky = 0.0f;
+    j.sys.out->monSrc[17] = &leaky;
+    const float* x = &j.sys.nto->jacks[NTO::jSine].value;
+    const float* y = &j.sys.vcfq->jacks[VCFQ::jHp].value;
+    j.perSample = [x, y] (long)
+    {
+        const float ux = *x * (1.0f / kAudio), uy = *y * (1.0f / kAudio);
+        leaky = kAudio * (ux * uy + 0.1f * ux + 0.1f * uy);
+    };
+    render (j, "control/ring_bipolar_leaky.wav", 5.0);
+}
+
 } // namespace
 
 int main (int argc, char** argv)
@@ -325,6 +356,7 @@ int main (int argc, char** argv)
     renderV2();
     renderSupplementary();
     renderControl();
+    renderControlRing();
     std::printf ("done.\n");
     return 0;
 }

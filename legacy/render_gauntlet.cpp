@@ -284,6 +284,47 @@ int main(int argc, char** argv) {
         render("default_note60.wav", 4.5, {}, { {0.25, 2.0, 261.63f} });
     }
 
+    // ---- Supplementary pairs (added 2026-11-05, sound bar round 2) ----------
+    // Same toolchain, written to <dir>/supplementary/. Counterparts of the v2
+    // supplementary renders so the judged pieces are real A/B pairs.
+    //
+    // S1. RING with a BIPOLAR ~80 Hz modulator (T09 band patch, amended
+    //     2026-11-05 with Mark's approval): as file 8, but DSG2 out -> VCFQ
+    //     audio in -> VCFQ HP (fc 20 Hz, Q 0.5; patch-level AC coupling) ->
+    //     RING Y. VCFQ ping and its default VCM-mid feed are not used.
+    //     VCFQ input gain 0.3 (same as v2's patch: keeps the coupler linear).
+    {
+        std::vector<Ev> e = {
+            {0, "NTO/keytrack", 1}, {0, "KEY/freq", 300.f},
+            {0, "SLOPES/DUSG2/cycle", 1},
+            {0, "SLOPES/DUSG2/rise", 0.00625f}, {0, "SLOPES/DUSG2/fall", 0.00625f},
+            {0, "PATCH/VCFQ/audio in/A src", 6}, {0, "PATCH/VCFQ/audio in/A amt", 1.f},
+            {0, "TIMBRE/VCFQ/freq", 20.f}, {0, "TIMBRE/VCFQ/Q", 0.5f},
+            {0, "TIMBRE/VCFQ/input gain", 0.3f},
+            {0, "PATCH/RING/X in/A src", 1}, {0, "PATCH/RING/X in/A amt", 1.f},
+            {0, "PATCH/RING/Y in/A src", 13}, {0, "PATCH/RING/Y in/A amt", 1.f},
+            {0, "OUT/MIX/monitor src", 17}, {0, "OUT/MIX/monitor level", 1.0f}, // 0.2x modulator: full monitor
+        };
+        render("supplementary/ring_bipolar.wav", 5.0, e, {});
+    }
+    // S2. DUSG1 END/GATE duty law (T05e): DUSG1 cycling, period 20 ms,
+    //     rise/(rise+fall) = 5/25/50/75/95 % for 1.5 s each; DSG1 END ->
+    //     monitor (src 5). Default KEY trig + VCA1 feed zeroed as in file 6.
+    {
+        std::vector<Ev> e = {
+            {0, "SLOPES/DUSG1/cycle", 1},
+            {0, "PATCH/DUSG1/trig/A amt", 0.f},
+            {0, "PATCH/VCA1/audio in/A amt", 0.f},
+            {0, "OUT/MIX/monitor src", 5}, {0, "OUT/MIX/monitor level", 0.5f},
+        };
+        const double fr[5] = { 0.05, 0.25, 0.50, 0.75, 0.95 };
+        for (int k = 0; k < 5; k++) {
+            e.push_back({1.5 * k, "SLOPES/DUSG1/rise", (float)(fr[k] * 0.020)});
+            e.push_back({1.5 * k, "SLOPES/DUSG1/fall", (float)((1.0 - fr[k]) * 0.020)});
+        }
+        render("supplementary/dusg_end_duty.wav", 7.5, e, {});
+    }
+
     printf("done.\n");
     return 0;
 }
