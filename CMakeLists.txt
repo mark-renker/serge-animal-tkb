@@ -92,3 +92,13 @@ enable_testing()
 add_test(NAME gauntlet COMMAND satk_gauntlet)
 # G2u: needs a logged-in GUI session (documented constraint)
 add_test(NAME uxtests COMMAND satk_uxtests)
+
+# ---- Sound-bar evidence tools (phase 4 judge loop; no JUCE) -----------------
+# satk_render: v2 equivalents of the v1 reference patches -> gauntlet/renders/v2
+# satk_measure: pre-registered sound-bar bands measured on v1 AND v2 WAVs
+add_executable(satk_render tools/RenderGauntlet.cpp)
+set_target_properties(satk_render PROPERTIES CXX_STANDARD 17)
+target_compile_options(satk_render PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(satk_measure tools/MeasureSound.cpp)
+set_target_properties(satk_measure PROPERTIES CXX_STANDARD 17)
+target_compile_options(satk_measure PRIVATE -Wall -Wextra -Wpedantic)

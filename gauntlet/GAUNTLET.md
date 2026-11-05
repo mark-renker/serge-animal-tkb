@@ -200,6 +200,9 @@ each dimension "closer to documented hardware: A / B / tie" — this is the
 tiebreaker and gap-namer, not the decider.
 **Exit**: all pre-registered bands met, and the critic scores v2 closer-or-tie
 on every targeted dimension with no new in-scope gap.
+*2026-11-05 note (Mark-approved amendment, LOG.md): the T09 ring suppression
+band is measured on the bipolar (AC-coupled) modulator render
+`ring_bipolar.wav`; the unipolar `ring_sines` patch is listening material only.*
 
 ## Out of scope (declared now, not negotiated later)
 

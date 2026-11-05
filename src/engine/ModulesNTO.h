@@ -5,9 +5,12 @@
 //     simply runs the core backwards), run at 2x the host rate;
 //   - polyBLEP on the saw wrap (2x) and both pulse edges (base rate),
 //     polyBLAMP on both triangle corners (DspUtils kernels, |inc| as dt so TZFM stays clean);
-//   - tri -> sine via a slightly under-driven sine shaper (hardware-like
-//     ~1% residual kink, T04 THD <= 2%); VAR = the same shaper overdriven
-//     until it folds into an 'M', then squared up toward a pulse (VC shape);
+//   - tri -> sine via the sine shaper at exact drive (sin(pi/2*tri) is a
+//     pure sine of the core phase) plus a gentle smooth odd compression as
+//     the hardware-like residual (~0.25% THD, H3 only; T04 THD <= 2%; was an
+//     under-driven shaper with a peak kink until 2026-11-05, LOG.md); VAR =
+//     the shaper from a slightly under-driven start, overdriven until it
+//     folds into an 'M', then squared up toward a pulse (VC shape);
 //   - SINE/TRI/SAW/VAR decimated by the low-latency IIR halfband (LOG 2026-11-02:
 //     the NTO sits inside patchable sync/FM loops, keep loop latency small);
 //   - SOFT sync = bounded phase nudge: on a SYNC edge the core is pulled a
@@ -90,7 +93,7 @@ public:
     {
         Module::prepare (sampleRate);
         invFs2   = 1.0f / (2.0f * sr);
-        sineNorm = 1.0f / std::sin (kHalfPi * kSineK);
+        sineNorm = 1.0f / (1.0f - kSineComp);
         ctrlN    = std::max (1, (int) std::lround (sr / kCtrlHz));
         smoothK  = 1.0f - std::exp (-1.0f / (0.002f * sr)); // ~2 ms knob lag (v1 smoothing)
         acK      = 1.0f - std::exp (-2.0f * kPiF * kLinFmHpHz / sr);
@@ -198,7 +201,8 @@ private:
     static constexpr float kMaxHz     = 40000.0f;  // > 32 kHz via CV (T02); 2x core inc <= 0.42
     static constexpr float kMaxInc    = 0.45f;     // per internal sample (polyBLEP needs < 0.5)
     static constexpr float kLinFmHpHz = 2.0f;      // LIN FM AC coupling corner
-    static constexpr float kSineK     = 0.94f;     // shaper drive < 1: residual kink, ~1% THD
+    static constexpr float kVarBase   = 0.94f;     // VAR shaper drive at shape 0 (under-driven: soft 'M' onset)
+    static constexpr float kSineComp  = 0.01f;     // SINE: gentle odd compression of the exact sine, ~0.25% THD
     static constexpr float kVarFold   = 2.0f;      // shaper drive at shape 1 (folds into 'M')
     static constexpr float kVarSquare = 6.0f;      // tanh squaring drive at shape 1
     // soft sync (bounded phase nudge)
@@ -236,7 +240,7 @@ private:
     {
         if (! differs (s, shapeCache)) return;
         shapeCache = s;
-        varG = kSineK + (kVarFold - kSineK) * s;
+        varG = kVarBase + (kVarFold - kVarBase) * s;
         varNorm = 1.0f / std::sin (kHalfPi * std::min (varG, 1.0f));
         varD = kVarSquare * s * s;
         varDNorm = varD > 1.0e-3f ? 1.0f / dsp::fastTanh (varD) : 1.0f;
@@ -269,10 +273,17 @@ private:
         // saw: drops by 2 at the wrap
         const float saw = 2.0f * p - 1.0f - dsp::polyBLEP (p, dt);
         // triangle: -1 at p=0, +1 at p=0.5; corners rounded by polyBLAMP
-        float tri = p < 0.5f ? 4.0f * p - 1.0f : 3.0f - 4.0f * p;
-        tri += (dsp::polyBLAMP (p, dt) - dsp::polyBLAMP (q, dt)) * dt * 4.0f;
-        // tri -> sine shaper (slightly under-driven: hardware-like residual)
-        const float sine = std::sin (kHalfPi * kSineK * tri) * sineNorm;
+        const float triRaw = p < 0.5f ? 4.0f * p - 1.0f : 3.0f - 4.0f * p;
+        const float tri = triRaw + (dsp::polyBLAMP (p, dt) - dsp::polyBLAMP (q, dt)) * dt * 4.0f;
+        // tri -> sine: sin(pi/2 * tri) is exactly a sine of the core phase
+        // (the triangle is linear in phase), and the shaper's zero slope at
+        // the corners makes the corner smooth, so it takes the UNROUNDED
+        // triangle (the BLAMP rounding would leave a small bump at each peak).
+        // The hardware-like residual is a gentle, smooth odd compression
+        // (s - c*s^3: H3 only, compressive sign, no peak kink -> no long odd
+        // series; LOG.md 2026-11-05).
+        const float s0   = std::sin (kHalfPi * triRaw);
+        const float sine = (s0 - kSineComp * s0 * s0 * s0) * sineNorm;
         // VAR: same shaper driven harder (folds into an 'M'), then squared up
         float var = std::sin (kHalfPi * varG * tri) * varNorm;
         if (varD > 1.0e-3f) var = dsp::fastTanh (varD * var) * varDNorm;

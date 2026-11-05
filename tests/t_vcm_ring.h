@@ -9,7 +9,9 @@
 //             steps AND over 8 VC FOLD steps; DC-ramp static transfer shows
 //             >= 2 slope-sign reversals; folded ~1 kHz sine (997 Hz, so
 //             aliases do not land on harmonic bins of 48 kHz) -> every
-//             non-harmonic component <= -50 dBc.
+//             non-harmonic component <= -50 dBc. Regression: the FOLD-knob
+//             centroid also rises with the REAL NTO SINE as the input
+//             (via VCA1 LIN 0.8, the sound-bar patch, and direct).
 //   T08 BOT : full depth -> even harmonics dominate by >= 12 dB; BOT SQ OUT
 //             present, squared-up (crest), distinct from BOT OUT, PWM-like
 //             (duty moves with depth).
@@ -25,6 +27,7 @@
 // Render evidence (SATK_RENDER=1): gauntlet/renders/v2work/shapers/*.wav.
 #pragma once
 #include "Harness.h"
+#include "t_nto.h" // freqKnob, zcFreq (real-NTO-sine fold sweep)
 #include <complex>
 #include <cstdint>
 #include <cstdlib>
@@ -175,7 +178,7 @@ inline std::vector<float> vcmSine (const VcmRun& p, int inJack, int outJack,
 // Static transfer: slow DC ramp lo..hi volts over n samples (input band
 // << fold features, so the read-out is the memoryless curve).
 inline std::vector<float> vcmRamp (const VcmRun& p, int inJack, int outJack,
-                                   double lo, double hi, int n)
+                                   double lo, double hi, int n, float* midMakeupOut = nullptr)
 {
     Rig r; auto* v = r.sys.vcm;
     v->ctls[VCM::cFold].v = p.fold; v->ctls[VCM::cBias].v = p.bias;
@@ -192,6 +195,7 @@ inline std::vector<float> vcmRamp (const VcmRun& p, int inJack, int outJack,
         r.sys.engine.tick();
         y[(size_t) i] = v->jacks[(size_t) outJack].value;
     }
+    if (midMakeupOut) *midMakeupOut = v->midMakeup();
     return y;
 }
 
@@ -260,6 +264,28 @@ inline void testMid()
     }
     bool monoK = true, monoV = true;
     for (size_t i = 1; i < cK.size(); ++i) { monoK &= cK[i] > cK[i - 1]; monoV &= cV[i] > cV[i - 1]; }
+
+    // round 2 (2026-11-05): minimum FOLD passes a sine nearly clean, and the
+    // section holds its level as it folds (hardware folders do; v2 r1 fell
+    // 6.6 dB from FOLD step 4 to 8)
+    {
+        VcmRun q; q.fold = 0.0f;
+        const auto y0 = vcmSine (q, VCM::jMidIn1, VCM::jMidOut, f0, kAudio, 48000);
+        const double thd0 = t_nto::thd (y0, f0);
+        std::printf ("  MID minimum FOLD, 2.5 V sine: THD %.2f %%\n", 100.0 * thd0);
+        CHECK (thd0 <= 0.015, "T08 MID minimum fold passes a 2.5 V sine nearly clean (THD <= 1.5%)", thd0, 0.015);
+        std::vector<double> lv;
+        for (int k = 0; k < 8; ++k)
+        {
+            VcmRun r; r.fold = (float) k / 7.0f;
+            lv.push_back (db (rmsOf (vcmSine (r, VCM::jMidIn1, VCM::jMidOut, f0, kAudio, 48000)), 1.0));
+        }
+        const double span = *std::max_element (lv.begin(), lv.end()) - *std::min_element (lv.begin(), lv.end());
+        std::printf ("  MID rms vs FOLD knob (dBV):");
+        for (double v : lv) std::printf (" %.1f", v);
+        std::printf ("\n");
+        CHECK (span <= 4.0, "MID level held over the 8 FOLD steps (2.5 V sine, within +-2 dB)", span, 4.0);
+    }
     std::printf ("  centroid vs FOLD knob (Hz):");
     for (double c : cK) std::printf (" %.0f", c);
     std::printf ("\n  centroid vs VC FOLD 0..5 V (Hz):");
@@ -269,11 +295,16 @@ inline void testMid()
     CHECK (monoV, "T08 MID centroid strictly increasing over 8 VC FOLD steps", cV.front(), cV.back());
 
     // static transfer at max fold: it must FOLD (turnarounds), not saturate
-    const auto tr = vcmRamp (p, VCM::jMidIn1, VCM::jMidOut, -kAudio, kAudio, 96000);
+    // The fold peaks are +-2.5 V times the section's level-compensation
+    // makeup (2026-11-05: output level held across the FOLD sweep, makeup
+    // capped at 2x), so the bound is checked on the makeup-scaled peak and
+    // the absolute peak may never exceed 2x nominal.
+    float mk = 0.0f;
+    const auto tr = vcmRamp (p, VCM::jMidIn1, VCM::jMidOut, -kAudio, kAudio, 96000, &mk);
     const int rev = slopeReversals (tr, 0.05);
     CHECK (rev >= 2, "T08 MID static transfer: >= 2 slope-sign reversals", rev, 2);
-    CHECK (peakOf (tr) <= 1.02 * kAudio && peakOf (tr) >= 0.9 * kAudio,
-           "T08 MID transfer bounded at the +-2.5 V fold peaks", peakOf (tr), kAudio);
+    CHECK (peakOf (tr) <= 1.02 * kAudio * mk && peakOf (tr) >= 0.9 * kAudio * mk && mk <= 2.0f,
+           "T08 MID transfer bounded at the fold peaks (+-2.5 V x makeup <= 2)", peakOf (tr), kAudio * mk);
 
     // symmetry sanity: bias off-centre must bring in even harmonics
     VcmRun b = p; b.bias = 0.7f;
@@ -281,6 +312,77 @@ inline void testMid()
     double ob, eb; oddEvenEnergy (ab, ob, eb);
     CHECK (10.0 * std::log10 (ob / std::max (eb, 1e-30)) < oe - 20.0,
            "T08 MID BIAS off-centre adds even harmonics", 10.0 * std::log10 (ob / std::max (eb, 1e-30)), oe);
+}
+
+// Regression (sound bar, vcm_mid_foldsweep.wav): the centroid must also rise
+// for a REAL, slightly impure sine — the NTO SINE jack (under-driven tri->sine
+// shaper: H3 ~ -37 dBc, THD ~1.5 %, inside T04), not the ideal sine above.
+// Feeds: (a) the sound-bar manifest patch, NTO SINE -> VCA1 (LIN, LEVEL 0.8)
+// -> MID IN 1; (b) NTO SINE straight into MID IN 1. NTO 220 Hz, BIAS centred,
+// drift 0 (T08 conditions); FOLD knob 8 steps k/7, 1 s each after a 0.2 s
+// settle; centroid on the refined (zero-crossing) f0. Before the 2026-11-04
+// fix the manifest feed went 262 -> 251 -> 270 Hz: the knee onset smoothed
+// away the NTO's peak kink faster than it added harmonics of its own (LOG.md).
+inline std::vector<double> realSineFoldSweep (bool viaVca, std::vector<double>* levels = nullptr)
+{
+    constexpr int nH = 100;
+    std::vector<double> c;
+    for (int k = 0; k < 8; ++k)
+    {
+        Rig r; auto& s = r.sys;
+        s.out->ctls[OUT::cDrift].v = 0.0f;
+        s.nto->ctls[NTO::cFreq].v = t_nto::freqKnob (220.0);
+        s.vca1->ctls[VCA::cResponse].v = 0.0f; // LIN
+        s.vca1->ctls[VCA::cLevel].v = 0.8f;
+        if (viaVca)
+        {
+            s.patch (s.nto, NTO::jSine, s.vca1, VCA::jIn);
+            s.patch (s.vca1, VCA::jOut, s.vcm, VCM::jMidIn1);
+        }
+        else
+            s.patch (s.nto, NTO::jSine, s.vcm, VCM::jMidIn1);
+        s.vcm->ctls[VCM::cBias].v = 0.5f;
+        s.vcm->ctls[VCM::cFold].v = (float) k / 7.0f;
+        s.prepare (SR); // snap the knob smoothers to the test settings
+        r.step (9600);
+        std::vector<float> y (48000), ref (48000);
+        for (size_t i = 0; i < y.size(); ++i)
+        {
+            s.engine.tick();
+            y[i] = s.vcm->jacks[VCM::jMidOut].value;
+            ref[i] = s.nto->jacks[NTO::jSine].value;
+        }
+        const double f0 = t_nto::zcFreq (ref);
+        c.push_back (centroid (harmonics (y, f0, nH), f0));
+        if (levels) levels->push_back (db (rmsOf (y), 1.0));
+    }
+    return c;
+}
+
+inline void testMidRealSine()
+{
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        const bool viaVca = pass == 0;
+        std::vector<double> lv;
+        const auto c = realSineFoldSweep (viaVca, &lv);
+        bool mono = true;
+        double worst = 1.0e9;
+        for (size_t i = 1; i < c.size(); ++i) { mono &= c[i] > c[i - 1]; worst = std::min (worst, c[i] / c[i - 1]); }
+        std::printf ("  real NTO SINE %s -> MID, centroid vs FOLD knob (Hz):",
+                     viaVca ? "-> VCA1 LIN 0.8" : "direct");
+        for (double v : c) std::printf (" %.1f", v);
+        std::printf ("  (worst step ratio %.4f)\n", worst);
+        const double span = *std::max_element (lv.begin(), lv.end()) - *std::min_element (lv.begin(), lv.end());
+        std::printf ("    rms per FOLD step (dBV):");
+        for (double v : lv) std::printf (" %.1f", v);
+        std::printf ("  (span %.1f dB)\n", span);
+        if (viaVca)
+            CHECK (span <= 4.0, "MID level held over the sound-bar FOLD sweep (real sine via VCA 0.8, +-2 dB)", span, 4.0);
+        CHECK (mono, viaVca ? "T08 MID real NTO sine via VCA 0.8: centroid rises (8 FOLD)"
+                            : "T08 MID real NTO sine direct: centroid rises (8 FOLD)",
+               c.front(), c.back());
+    }
 }
 
 // Anti-aliasing: max fold, ~1 kHz sine (997 Hz) at 2.5 V; every component
@@ -344,6 +446,45 @@ inline void testBot()
     for (int h = 1; h <= 8; ++h) std::printf (" %.1f", db (a[(size_t) h], strongest));
     std::printf ("\n");
     CHECK (eo >= 12.0, "T08 BOT full depth: even:odd energy >= 12 dB", eo, 12);
+
+    // round 2 (2026-11-05): a rectifier CASCADE — each of the 3 stages doubles
+    // the frequency, so a sine's energy moves H1 -> H2 -> H4 -> H8 as the
+    // depth passes 1/3, 2/3, 1 (hardware-spec §2.5 "2nd, 4th, 8th"), at a
+    // held level, from the first cycle (no fade-in)
+    {
+        const float dd[3] = { 1.0f / 3.0f, 2.0f / 3.0f, 1.0f };
+        const int want[3] = { 2, 4, 8 };
+        bool order = true; double worstMargin = 1e9, lmin = 1e9, lmax = -1e9;
+        for (int i = 0; i < 3; ++i)
+        {
+            VcmRun q; q.depth = dd[i];
+            const auto y = vcmSine (q, VCM::jBotIn1, VCM::jBotOut, f0, kAudio, 48000);
+            const auto h = harmonics (y, f0, 100);
+            size_t hs = 1; double second = 0.0;
+            for (size_t k = 1; k < h.size(); ++k) if (h[k] > h[hs]) hs = k;
+            for (size_t k = 1; k < h.size(); ++k) if (k != hs) second = std::max (second, h[k]);
+            order &= (int) hs == want[i];
+            worstMargin = std::min (worstMargin, db (h[hs], second));
+            lmin = std::min (lmin, rmsOf (y)); lmax = std::max (lmax, rmsOf (y));
+            std::printf ("  BOT depth %.2f: strongest H%d, next %.1f dB below\n", dd[i], (int) hs, db (h[hs], second));
+        }
+        CHECK (order && worstMargin >= 20.0, "T08 BOT octave cascade: depth 1/3, 2/3, 1 -> H2, H4, H8 dominant (>= 20 dB)",
+               worstMargin, 20);
+        std::vector<double> lv;
+        for (int k = 0; k <= 12; ++k)
+        {
+            VcmRun q; q.depth = (float) k / 12.0f;
+            lv.push_back (rmsOf (vcmSine (q, VCM::jBotIn1, VCM::jBotOut, f0, kAudio, 48000)));
+        }
+        const double span = db (*std::max_element (lv.begin(), lv.end()), *std::min_element (lv.begin(), lv.end()));
+        CHECK (span <= 1.5, "T08 BOT level held over the depth sweep (13 steps, sine, within 1.5 dB)", span, 1.5);
+        VcmRun q; q.depth = 1.0f;
+        const auto on = vcmSine (q, VCM::jBotIn1, VCM::jBotOut, f0, kAudio, 4800, 0);
+        double pk0 = 0.0, pk1 = 0.0;
+        for (size_t i = 0; i < 480; ++i) pk0 = std::max (pk0, (double) std::fabs (on[i]));
+        for (size_t i = 2400; i < 4800; ++i) pk1 = std::max (pk1, (double) std::fabs (on[i]));
+        CHECK (pk0 >= 0.9 * pk1, "T08 BOT no fade-in: first 10 ms peak >= 90% of steady", pk0, pk1);
+    }
 
     // level compensation: rectification must not shrink the output
     VcmRun p0; p0.depth = 0.0f;
@@ -511,6 +652,22 @@ inline void testRing()
         CHECK (suppX >= 55.0 && lsb > 10.0 * car && usb > 10.0 * sig,
                "T09 sidebands dominant (signal also suppressed >= 55 dB)", suppX, 55);
         CHECK (supp <= 85.0, "T09 suppression inside the 55..85 dB sound-bar band", supp, 85);
+    }
+
+    // round 2 (2026-11-05): a pure four-quadrant multiplier fed a symmetric
+    // unipolar (0..5 V) carrier makes X and X ± fY only. The tanh(0.35·Y)
+    // core bent the offset carrier into a 2nd harmonic: X ± 2·fY at -32 dBc.
+    {
+        RingRun p; p.dcY = kAudio; // 0..5 V sine carrier
+        const auto o = ringRun (p);
+        const double strongest = std::max ({ toneOf (o, 300.0), toneOf (o, 220.0), toneOf (o, 380.0) });
+        const double p2 = std::max (toneOf (o, 140.0), toneOf (o, 460.0));
+        const double x3 = toneOf (o, 900.0);
+        std::printf ("  RING unipolar carrier: X±2fY %.1f dB, 3fX %.1f dB re strongest\n",
+                     db (p2, strongest), db (x3, strongest));
+        CHECK (db (p2, strongest) <= -80.0, "T09 offset (unipolar) carrier: no X +- 2fY products (<= -80 dB)",
+               db (p2, strongest), -80);
+        CHECK (db (x3, strongest) <= -80.0, "T09 nominal signal passes linearly (3fX <= -80 dB)", db (x3, strongest), -80);
     }
 
     // feedthrough trims: each input alone, morph = full ring
@@ -786,6 +943,7 @@ inline void run()
 {
     GROUP ("T08 VCM (mid folder, bottom rectifiers + SQ, top LO/HI, alias floor)");
     testMid();
+    testMidRealSine();
     testMidAlias();
     testBot();
     testTop();
