@@ -437,3 +437,14 @@ U01 rewritten (UX 24/24).
 - Remaining for Win: sound soft bar (phase 4, in progress). Phase 5 split:
   presets + program support (UI/plugin session), README + final validation and
   install after merge (sound session).
+
+## 2026-11-05 — Amendment (Mark): default cable 8, KEY KV -> NTO 1V/OCT A
+
+- Found while building presets: v2's frozen default set (SPEC §6) had no path
+  from MIDI pitch to the oscillator — notes retriggered the envelope at one
+  pitch (measured: KV 0 V and 1 V both -> NTO 262.2 Hz). v1 hardwired the KEY
+  frequency into the NTO. Mark approved adding the cable.
+- `System::patchDefaults()` gains `key.jKv -> nto.jOctA`; SPEC §6 table +1 row.
+  Now KV 1 V -> 522 Hz (octave). Note 60 = KV 0 V, so T15, the sound-bar
+  note-60 render and the loudness target are unchanged. UX round-trip count
+  7+1 -> 8+1. Gauntlet 200/200, UX 24/24.

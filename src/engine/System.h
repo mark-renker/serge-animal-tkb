@@ -76,6 +76,7 @@ struct System
         patch (dusg1, DUSG::jOut, vca1,  VCA::jVc);      // DUSG1 out -> VCA1 CV
         patch (vca1,  VCA::jOut,  out,   OUT::jIn1);     // VCA1 -> mixer 1
         patch (vca2,  VCA::jOut,  out,   OUT::jIn2);     // VCA2 -> mixer 2
+        patch (key,   KEY::jKv,   nto,   NTO::jOctA);    // KEY KV -> NTO 1V/OCT A (v1 hardwired MIDI pitch; amendment 2026-11-05)
     }
 
 private:

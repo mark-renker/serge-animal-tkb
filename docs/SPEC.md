@@ -368,7 +368,8 @@ Wiring: `System::wireMonitor()` fills `OUT::monSrc` with jack-value pointers in 
 
 Cables 1–5 are v1's five default matrix connections (v1 amounts 1.0/0.8/0.8/1.0/1.0 —
 amounts are absorbed into module input calibration; loudness regression target §1);
-cables 6–7 replace v1's hardwired VCA→pan-mixer path.
+cables 6–7 replace v1's hardwired VCA→pan-mixer path; cable 8 restores v1's hardwired
+MIDI pitch → NTO.
 
 | # | from | to |
 |---|---|---|
@@ -379,6 +380,11 @@ cables 6–7 replace v1's hardwired VCA→pan-mixer path.
 | 5 | `dusg1.jOut` | `vca1.jVc` |
 | 6 | `vca1.jOut` | `out.jIn1` |
 | 7 | `vca2.jOut` | `out.jIn2` |
+| 8 | `key.jKv` | `nto.jOctA` |
+
+Cable 8 (amendment 2026-11-05, Mark): v1 hardwired the MIDI key pitch into the NTO;
+v2's frozen set had dropped it, so MIDI notes retriggered one pitch. KV is 0 V at
+note 60, so every note-60 test/render is unchanged.
 
 T15: MIDI note 60 on this patch ⇒ RMS ≥ 0.02 within 1 s; note-off decays below −60 dBFS;
 removing cable 1 ⇒ exact 0.0; velocity scales the final mix; monitor auditions any source.

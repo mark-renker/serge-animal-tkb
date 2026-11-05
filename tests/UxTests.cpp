@@ -167,8 +167,8 @@ int main()
         for (auto& c : cables2)
             if (satk::Cable { ringIdx, satk::RING::jOut, vcfqIdx, satk::VCFQ::jAgc } == c)
                 extraFound = true;
-        CHECK (cables2.size() == 8 && extraFound,
-               "cables survive the round-trip (7 defaults + 1 added)", (double) cables2.size());
+        CHECK (cables2.size() == 9 && extraFound,
+               "cables survive the round-trip (8 defaults + 1 added)", (double) cables2.size());
 
         const float restored = proc2.apvts.getParameter ("nto_0")->getValue();
         CHECK (std::abs (restored - 0.777f) < 1e-4f,
