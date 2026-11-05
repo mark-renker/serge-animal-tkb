@@ -787,7 +787,7 @@ public:
     }
 };
 
-class SatkEditor : public juce::AudioProcessorEditor
+class SatkEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
     static constexpr float kMinScale = 0.5f, kMaxScale = 2.4f; // zoom range
@@ -819,6 +819,24 @@ public:
             if (id > 0) setScaleStep ((float) id / 100.0f);
         };
         addAndMakeVisible (zoomBox);
+
+        // factory programs (default voice + the six v1 demos)
+        for (int i = 0; i < proc.getNumPrograms(); ++i)
+            presetBox.addItem (proc.getProgramName (i), i + 1);
+        presetBox.setTooltip ("Preset: load a factory patch (all knobs and cables). "
+                              "Default Voice plus the six v1 demo patches.");
+        presetBox.setColour (juce::ComboBox::backgroundColourId, col::headerBg.brighter (0.08f));
+        presetBox.setColour (juce::ComboBox::textColourId,       col::ioInk);
+        presetBox.setColour (juce::ComboBox::outlineColourId,    col::ioInk.withAlpha (0.55f));
+        presetBox.setColour (juce::ComboBox::arrowColourId,      col::ioInk);
+        presetBox.setSelectedId (proc.getCurrentProgram() + 1, juce::dontSendNotification);
+        presetBox.onChange = [this]
+        {
+            const int id = presetBox.getSelectedId();
+            if (id > 0 && id - 1 != proc.getCurrentProgram()) proc.setCurrentProgram (id - 1);
+        };
+        addAndMakeVisible (presetBox);
+        startTimerHz (5); // follow host-side program changes
 
         clearBtn.setButtonText ("CLEAR");
         clearBtn.setTooltip ("Remove every patch cable from the panel (knob settings are kept).");
@@ -868,6 +886,8 @@ public:
         auto header = r.removeFromTop (HEADER_H);
         clearBtn.setBounds (header.removeFromRight (104).reduced (6, 4));
         zoomBox.setBounds (header.removeFromRight (150).reduced (6, 4));
+        presetBox.setBounds (header.removeFromRight (200).reduced (6, 4));
+        titleW = juce::jmax (0, header.getWidth() - 14);
         viewport.setBounds (r);
         // a resize that didn't come through a drag or a zoom step (host/OS):
         // below the cap the window IS the panel at its zoom, so follow it
@@ -883,12 +903,12 @@ public:
         g.fillAll (col::headerBg);
         g.setColour (col::ioInk);
         g.setFont (panelFont (15.0f, true));
-        g.drawText ("SERGE  ANIMAL  TKB", 14, 0, 200, HEADER_H, juce::Justification::centredLeft);
-        if (getWidth() > 640)
+        g.drawText ("SERGE  ANIMAL  TKB", 14, 0, juce::jmin (200, titleW), HEADER_H, juce::Justification::centredLeft);
+        if (titleW > 460)
         {
             g.setColour (col::ioInk.withAlpha (0.55f));
             g.setFont (panelFont (11.0f, false));
-            g.drawText ("RENKY DENK  -  SOFTWARE RECREATION", 220, 0, juce::jmax (0, getWidth() - 480),
+            g.drawText ("RENKY DENK  -  SOFTWARE RECREATION", 220, 0, titleW - 220,
                         HEADER_H, juce::Justification::centredLeft);
         }
     }
@@ -899,10 +919,18 @@ public:
     PanelView view;
     juce::Viewport viewport;
     juce::ComboBox zoomBox;   // the visible ZOOM control (U02)
+    juce::ComboBox presetBox; // factory programs (U05)
     juce::TextButton clearBtn;
     PanelConstrainer constrainer;
 
 private:
+    void timerCallback() override
+    {
+        const int id = proc.getCurrentProgram() + 1;
+        if (presetBox.getSelectedId() != id) presetBox.setSelectedId (id, juce::dontSendNotification);
+    }
+    int titleW = 400;
+
     void applyZoom (float z)
     {
         zoom = z;

@@ -22,11 +22,12 @@ public:
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return {}; }
-    void changeProgramName (int, const juce::String&) override {}
+    // factory programs (src/plugin/Presets.h): 0 = default voice, 1..6 = v1 demos
+    int getNumPrograms() override;
+    int getCurrentProgram() override { return currentProgram.load(); }
+    void setCurrentProgram (int index) override;
+    const juce::String getProgramName (int index) override;
+    void changeProgramName (int, const juce::String&) override {} // factory set is read-only
 
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
@@ -69,6 +70,7 @@ private:
 
     std::atomic<int> cableVer { 0 };
     std::atomic<float> editorScale { 1.0f };
+    std::atomic<int> currentProgram { 0 };
     int heldNote = -1;
     juce::SortedSet<int> notesDown;
     double clockPhase = 0.0; bool wasPlaying = false;

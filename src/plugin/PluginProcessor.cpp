@@ -9,6 +9,7 @@
 //  - Mono last-note MIDI -> KEY fields; the engine ticks UNCONDITIONALLY
 //    (fixes v1's voice-reclamation bug that killed generative patches).
 #include "PluginProcessor.h"
+#include "Presets.h"
 #include "../ui/MainView.h"
 
 using namespace satk;
@@ -170,6 +171,51 @@ void SatkProcessor::processBlock (juce::AudioBuffer<float>& buf, juce::MidiBuffe
 }
 
 // ------------------------------------------------------------- cables -------
+// ---- factory programs -------------------------------------------------------
+int SatkProcessor::getNumPrograms() { return (int) satk::presets::all().size(); }
+
+const juce::String SatkProcessor::getProgramName (int index)
+{
+    const auto& list = satk::presets::all();
+    return index >= 0 && index < (int) list.size() ? juce::String (list[(size_t) index].name) : juce::String();
+}
+
+// Every parameter returns to its default (host-notified), then the preset's
+// ctls and its complete cable set are applied. Message-thread call (host
+// program change, editor PRESET menu).
+void SatkProcessor::setCurrentProgram (int index)
+{
+    const auto& list = satk::presets::all();
+    if (index < 0 || index >= (int) list.size()) return;
+    const auto& pr = list[(size_t) index];
+
+    auto setCtl = [this] (const satk::Module& m, int c, float value, bool isDefault)
+    {
+        auto* p = apvts.getParameter (paramID (m, c));
+        if (p == nullptr) return;
+        const float norm = isDefault ? p->getDefaultValue()
+                         : (m.ctls[(size_t) c].steps > 0 ? p->convertTo0to1 (value) : value);
+        p->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, norm));
+    };
+    for (auto& m : sys.engine.mods)
+        for (int c = 0; c < (int) m->ctls.size(); ++c)
+            setCtl (*m, c, 0.0f, true);
+    for (const auto& c : pr.ctls)
+        if (auto* m = satk::presets::findModule (sys.engine, c.mod))
+            if (c.ctl >= 0 && c.ctl < (int) m->ctls.size())
+                setCtl (*m, c.ctl, c.value, false);
+
+    clearAllCables();
+    for (const auto& c : pr.cables)
+    {
+        auto* a = satk::presets::findModule (sys.engine, c.modA);
+        auto* b = satk::presets::findModule (sys.engine, c.modB);
+        if (a != nullptr && b != nullptr)
+            addCable (sys.engine.indexOf (a), c.jackA, sys.engine.indexOf (b), c.jackB);
+    }
+    currentProgram.store (index);
+}
+
 bool SatkProcessor::addCable (int mA, int jA, int mB, int jB)
 {
     const juce::SpinLock::ScopedLockType sl (engineLock);
@@ -247,6 +293,7 @@ void SatkProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     juce::ValueTree root ("SATK");
     root.setProperty ("editorScale", (double) editorScale.load(), nullptr);
+    root.setProperty ("program", currentProgram.load(), nullptr);
     root.setProperty ("seed", juce::String::toHexString ((juce::int64) sys.engine.seed()), nullptr);
     root.appendChild (apvts.copyState(), nullptr);
     {
@@ -263,6 +310,8 @@ void SatkProcessor::setStateInformation (const void* data, int size)
 
     if (root.hasProperty ("editorScale"))
         editorScale.store ((float) (double) root.getProperty ("editorScale"));
+    if (root.hasProperty ("program")) // label only: params + cables below are authoritative
+        currentProgram.store (juce::jlimit (0, getNumPrograms() - 1, (int) root.getProperty ("program")));
 
     auto params = root.getChildWithName (apvts.state.getType());
     if (params.isValid()) apvts.replaceState (params);

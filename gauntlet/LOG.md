@@ -448,3 +448,26 @@ U01 rewritten (UX 24/24).
   Now KV 1 V -> 522 Hz (octave). Note 60 = KV 0 V, so T15, the sound-bar
   note-60 render and the loudness target are unchanged. UX round-trip count
   7+1 -> 8+1. Gauntlet 200/200, UX 24/24.
+
+## 2026-11-05 — Phase 5: factory presets + program support
+
+- `src/plugin/Presets.h` (JUCE-free data + engine-level apply): program 0
+  "Default Voice" (== `patchDefaults()`, all-default ctls) and the six v1 demo
+  patches as v2 cable sets: Fold Sweep Voice, Filter Pings, Slope Bongos, Ring
+  Fold Drone, Random Melody, Wild Animal.
+- Translation (interpretations): v1 per-slot matrix amounts -> the
+  destination's attenuverter (0.5 + amount/2) where one exists, else absorbed
+  into a knob giving the same depth (e.g. TKB RANGE for row CV, VCFQ GAIN for
+  input level); v1 "KEY held at f" drones -> NTO FREQ at f with VCA LEVEL
+  holding the VCAs open; demo 2 stays on the monitor bus; v1's VCM "fold CV"
+  on a bottom-section patch maps to VC BOT. Drone levels trimmed so every
+  program sits within +12 dB of the default voice (rms 0.036..0.129).
+- Plugin: getNumPrograms/getProgramName/setCurrentProgram (every param back to
+  default with host notification, then preset ctls + its full cable set);
+  program index saved in state (label only — params + cables authoritative).
+  Editor header gains a PRESET menu (follows host program changes at 5 Hz).
+- Tests: t_presets (7 programs, program 0 == patchDefaults, each program
+  applies / finite / audible / level-matched); UX U05 (program API + PRESET
+  menu). Gauntlet 209/209, UX 30/30, 0 warnings in our sources; pluginval
+  1.0.4 strictness 10 on the new VST3: SUCCESS, "Num programs: 7, all program
+  names checked" (clears the "Current program is -1" note).

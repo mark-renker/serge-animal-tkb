@@ -10,6 +10,7 @@
 #include "t_vcm_ring.h"  // T08-T09            (shapers builder)
 #include "t_noise_vca.h" // T10-T11            (noise/VCA builder)
 #include "t_tkb_key.h"   // T12                (TKB/KEY builder)
+#include "t_presets.h"   // phase 5 presets (UI/plugin builder)
 #include "t_system.h"    // T00, T01, T13, T14, T15, T16, T17 (system-level)
 
 int main()

@@ -12,9 +12,12 @@
 //         menu) returns a tooltip >= 15 chars; a shared TooltipWindow is
 //         installed.
 //   U04 — headless editor -> PNG snapshot smoke test.
+//   U05 — factory programs: count/names, setCurrentProgram applies knobs +
+//         cables, the editor PRESET menu follows and drives the program.
 // Exit code = number of failures.
 #include "../src/plugin/PluginProcessor.h"
 #include "../src/ui/MainView.h"
+#include "../src/plugin/Presets.h"
 #include <cstdio>
 
 static int passed = 0, failed = 0;
@@ -182,6 +185,29 @@ int main()
                "fresh editor opens at the restored zoom", ed2 ? ed2->getZoom() : 0.0, 1.25);
     }
 
+    // ---------------------------------------------------------------- U05 --
+    GROUP ("U05 factory programs (phase 5 presets)");
+    {
+        CHECK (proc.getNumPrograms() == 7, "7 factory programs", proc.getNumPrograms());
+        CHECK (proc.getProgramName (0) == "Default Voice" && proc.getProgramName (6).isNotEmpty(),
+               "program names (0 = Default Voice)");
+        proc.setCurrentProgram (4); // Ring Fold Drone
+        pump (12, 30); // the editor polls the program at 5 Hz
+        const auto& pr4 = satk::presets::all()[4];
+        CHECK (proc.getCurrentProgram() == 4 && proc.cableSnapshot().size() == pr4.cables.size(),
+               "setCurrentProgram applies the preset's full cable set", (double) proc.cableSnapshot().size(),
+               (double) pr4.cables.size());
+        const float vca1Lvl = proc.apvts.getRawParameterValue ("vca1_0")->load();
+        CHECK (std::abs (vca1Lvl - 0.30f) < 1e-4f, "setCurrentProgram applies the preset's knob values", vca1Lvl);
+        CHECK (ed->presetBox.getSelectedId() == 5, "editor PRESET menu follows the current program",
+               ed->presetBox.getSelectedId());
+        ed->presetBox.setSelectedId (1, juce::sendNotificationSync); // back to Default Voice via the menu
+        pump (2);
+        CHECK (proc.getCurrentProgram() == 0 && proc.cableSnapshot().size() == 8
+               && std::abs (proc.apvts.getRawParameterValue ("vca1_0")->load() - 0.0f) < 1e-4f,
+               "PRESET menu loads Default Voice (8 cables, defaults restored)", (double) proc.cableSnapshot().size());
+    }
+
     // ---------------------------------------------------------------- U03 --
     GROUP ("U03 tooltips on every interactive widget + shared TooltipWindow");
     {
@@ -196,7 +222,7 @@ int main()
         CHECK (census.pads == 16, "16 TKB touch pads present", census.pads);
         CHECK (census.knobs >= 100, "knob widgets present (incl. 64 TKB rows)", census.knobs);
         CHECK (census.toggles >= 6, "toggle widgets present", census.toggles);
-        CHECK (census.menus >= 3, "menu/selector widgets present (LENGTH, MONITOR, ZOOM)", census.menus);
+        CHECK (census.menus >= 4, "menu/selector widgets present (LENGTH, MONITOR, ZOOM, PRESET)", census.menus);
         CHECK (census.textButtons >= 1, "CLEAR button present", census.textButtons);
         CHECK (census.badTooltips == 0,
                "every interactive widget has a tooltip >= 15 chars", census.badTooltips);
