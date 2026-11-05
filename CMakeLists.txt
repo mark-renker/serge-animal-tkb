@@ -7,7 +7,10 @@ project(SergeAnimalTKB VERSION 2.0.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(APPLE)
-  set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
+  # universal binary (Apple Silicon + Intel) for distribution; override with
+  # -DSATK_ARCHS=arm64 for a faster native-only dev build
+  set(SATK_ARCHS "arm64;x86_64" CACHE STRING "macOS architectures to build")
+  set(CMAKE_OSX_ARCHITECTURES "${SATK_ARCHS}" CACHE STRING "" FORCE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "" FORCE)
 endif()
 

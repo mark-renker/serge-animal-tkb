@@ -1,0 +1,86 @@
+# Build installable plugins in the cloud.
+#   - push a tag like v2.0.1  -> builds macOS (universal .pkg) + Windows (VST3 zip),
+#                                runs the DSP test suite, and publishes a GitHub Release
+#   - "Run workflow" button    -> same builds, uploaded as workflow artifacts only
+name: release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (universal, JUCE 8.0.6 via FetchContent)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build plugins + test suite
+        run: cmake --build build -j 4 --target SergeAnimalTKB_All satk_gauntlet
+      - name: DSP test suite (perf benchmarks are informational on shared runners)
+        run: |
+          ./build/satk_gauntlet | tee gauntlet.log || true
+          if grep "FAIL" gauntlet.log | grep -v "perf" ; then
+            echo "::error::DSP test failures (non-perf) - see above"; exit 1
+          fi
+          grep "FAIL" gauntlet.log | grep "perf" && echo "::warning::perf benchmark(s) over budget on this runner" || true
+      - name: Package installer
+        run: packaging/make_installer.sh v2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (JUCE 8.0.6 via FetchContent)
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build VST3 + standalone + test suite
+        run: cmake --build build --config Release --parallel --target SergeAnimalTKB_VST3 SergeAnimalTKB_Standalone satk_gauntlet
+      - name: DSP test suite (perf benchmarks are informational on shared runners)
+        shell: bash
+        run: |
+          ./build/Release/satk_gauntlet.exe | tee gauntlet.log || true
+          if grep "FAIL" gauntlet.log | grep -v "perf" ; then
+            echo "::error::DSP test failures (non-perf) - see above"; exit 1
+          fi
+      - name: Package zip
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's/^project(SergeAnimalTKB VERSION \([0-9.]*\)).*/\1/p' CMakeLists.txt)
+          ART="build/SergeAnimalTKB_artefacts/Release"
+          OUT="Serge Animal TKB v2 $VERSION (Windows)"
+          mkdir -p "$OUT" dist
+          cp -R "$ART/VST3/Serge Animal TKB v2.vst3" "$OUT/"
+          cp "$ART/Standalone/Serge Animal TKB v2.exe" "$OUT/"
+          cp packaging/INSTALL-Windows.txt "$OUT/INSTALL.txt"
+          7z a "dist/SergeAnimalTKB-v2-$VERSION-Windows-x64.zip" "$OUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ macos, windows ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" --title "Serge Animal TKB $TAG" --notes-file packaging/RELEASE_NOTES.md
+          gh release upload "$TAG" dist/* --clobber

@@ -1,0 +1,14 @@
+Serge Animal TKB v2 - Windows
+
+VST3 plug-in:
+  Copy the folder "Serge Animal TKB v2.vst3" to
+    C:\Program Files\Common Files\VST3\
+  then rescan plug-ins in your DAW. It is listed under "Renky Denk".
+
+Standalone app:
+  Run "Serge Animal TKB v2.exe" from anywhere. If Windows SmartScreen warns
+  about an unrecognized app, click "More info" -> "Run anyway" (the app is not
+  code-signed).
+
+Presets: PRESET menu in the top bar (or your DAW's program list).
+More: https://github.com/mark-renker/serge-animal-tkb
