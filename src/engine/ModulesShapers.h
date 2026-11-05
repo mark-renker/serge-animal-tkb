@@ -4,14 +4,17 @@
 // gates T08/T09. Every nonlinear island runs at 2x through the low-latency IIR
 // halfbands (these modules sit in patchable feedback loops — LOG 2026-11-02).
 //   VCM MID : piecewise-linear reflector-cascade transfer (6 turnarounds,
-//             decaying + progressively denser folds, then hold) with rounded
-//             knees (box-smoothed), the whole composite in ONE closed-form
-//             2nd-order ADAA kernel.
-//   VCM BOT : three cascaded level-compensated full-wave rectifiers (ADAA1
-//             |x| each), depth crossfades stage by stage; SQ out = squared-up
-//             (ADAA1 tanh, high gain) version of the cascade output.
+//             decaying + progressively denser folds, then hold) with smooth
+//             knees (triangle-kernel smoothing), the whole composite in ONE
+//             closed-form 2nd-order ADAA kernel; output level compensated
+//             across the FOLD range (makeup table).
+//   VCM BOT : three cascaded level-compensated square-law full-wave
+//             rectifiers, depth crossfades stage by stage (sine: H1 -> H2 ->
+//             H4 -> H8), expanded into one degree-8 polynomial and ADAA1'd as
+//             one kernel; SQ out = squared-up (ADAA1 tanh, high gain) version
+//             of the cascade output.
 //   VCM TOP : LO = linear two-quadrant VCA, HI = VC rounded clip (ADAA1 tanh).
-//   RING    : four-quadrant transconductance multiplier tanh(X)·tanh(Y)
+//   RING    : four-quadrant multiplier X·Y with linear-then-soft input stages
 //             (NOT a diode ring), DC-coupled, morph dry -> AM -> ring, and
 //             explicit X/Y feedthrough trims (dB law logged in LOG.md).
 #pragma once
@@ -28,9 +31,10 @@ namespace shapers {
 // span — successive peaks alternate in sign with amplitude decay^k, and the
 // fold spacing shrinks by 1/shrink per turnaround (uneven, progressively
 // denser folds). After the last stage the transfer holds (the cascade's
-// final stage saturates against its rail). Every corner is rounded by
-// box-smoothing the transfer over ±w in the input domain (parabolic knees,
-// like the real diode knees), and the curve is normalised to peak ±1.
+// final stage saturates against its rail). Every corner is smoothed by
+// convolving the transfer with a triangle kernel of half-support W in the
+// input domain (cubic, C2 knees, like the soft knee of a real diode/transistor
+// stage), and the curve is normalised to peak ±1.
 //
 // Why decaying folds (fitted, logged in LOG.md): a constant-amplitude folder
 // (triangle or sine) has an intrinsic ripple in spectral centroid vs gain
@@ -39,31 +43,30 @@ namespace shapers {
 // steps of 2^0.286. Decay 0.5 / shrink 1.15 keep the centroid rising over
 // any ×1.215 gain step for every ideal-sine input level up to gain 16.
 //
-// Why w = 1.0, i.e. the first knee's rounding reaches the origin (2026-11-04,
-// LOG.md): with w 0.6 the transfer was exactly linear below |u| = 0.4 and the
-// knee came in gently above it. A REAL sine (NTO SINE: under-driven shaper,
-// a small kink at each peak, H3 -37 dBc, THD 1.5 %) then lost centroid as FOLD
-// rose from minimum (262 -> 251 Hz): the soft knee onset lowered the slope
-// under the peaks, smoothing the input's kink series (and cancelling its
-// H3/H5, opposite sign) before it added enough harmonics of its own. With
-// w = 1 the curve is u - 0.44·u|u| near zero: gently compressive from the
-// first millivolt, like a transistor folder, never a clean linear zone. Its
-// own harmonics then dominate the input's residue at every fold setting, so
-// more FOLD always means more upper harmonics for slightly impure sines too.
-// Cost: ~4.6 % THD at minimum FOLD with a 2.5 V sine (v1's sin() folder: ~2.6 %).
+// Knee history (LOG.md): 2026-11-02 box-smoothing w 0.6 (exactly linear below
+// |u| 0.4); 2026-11-04 w 1.0 (no linear zone) because the NTO SINE's peak kink
+// (an under-driven shaper, H3 -37 ... H51 -88 dBc) was cancelled by the
+// knee's onset and the real-sine centroid dipped at FOLD step 2 — at the cost
+// of a dirty minimum fold (4.6 % THD at 2.5 V). 2026-11-05 (round 2): the
+// root cause is fixed at the source (NTO SINE is now an exact sine with a
+// smooth H3-only, compressive residual, ~0.5 % THD), so the folder goes back
+// to a clean linear zone (|u| < 1 - W = 0.2) with C2 triangle-kernel knees
+// (W 0.8): 0.85 % THD at minimum FOLD for a 2.5 V sine, centroid rising for
+// ideal and real sines, and smoother outer knees (lower alias floor at the
+// fold peaks than the box knees).
 //
-// ADAA: P1..P3 (P1' = pl, P2' = P1, P3' = P2) are tabulated per segment at
-// configure time, so f / F1 / F2 of the smoothed composite (box differences
-// of P1 / P2 / P3) are exact closed forms of the WHOLE stage — ADAA2 wraps
-// it as one kernel (DspUtils rule). pl odd -> P1 even, P2 odd, P3 even.
+// ADAA: P1..P4 (P1' = pl, Pj' = Pj-1) are tabulated per segment at configure
+// time, so f / F1 / F2 of the smoothed composite (second differences of
+// P2 / P3 / P4 over W^2) are exact closed forms of the WHOLE stage — ADAA2
+// wraps it as one kernel (DspUtils rule).
 struct FoldKernel
 {
     static constexpr int kMaxTurns = 10;
     int K = 0;                              // turnarounds (finite segments)
     double b[kMaxTurns + 1] {}, v[kMaxTurns + 1] {};   // breakpoints / values
     double m[kMaxTurns + 2] {};             // slope of segment k (starts at b[k-1])
-    double A1[kMaxTurns + 2] {}, A2[kMaxTurns + 2] {}, A3[kMaxTurns + 2] {}; // P at b[k-1]
-    double w = 0.6, inv2w = 1.0 / 1.2, n = 1.0;
+    double A[5][kMaxTurns + 2] {};          // A[j][k] = P_j at b[k-1], j = 1..4
+    double W = 0.6, invW2 = 1.0 / 0.36, n = 1.0;
 
     void configure (int turns, double decay, double shrink, double width)
     {
@@ -78,60 +81,118 @@ struct FoldKernel
         }
         for (int k = 1; k <= K; ++k) m[k] = (v[k] - v[k - 1]) / (b[k] - b[k - 1]);
         m[K + 1] = 0.0; // hold after the last stage
-        A1[1] = A2[1] = A3[1] = 0.0;
+        for (int j = 1; j <= 4; ++j) A[j][1] = 0.0;
         for (int k = 1; k <= K; ++k)
         {
-            const double t = b[k] - b[k - 1];
-            double p1, p2, p3;
-            segP (k, t, p1, p2, p3);
-            A1[k + 1] = p1; A2[k + 1] = p2; A3[k + 1] = p3;
+            double p[5];
+            segP (k, b[k] - b[k - 1], p);
+            for (int j = 1; j <= 4; ++j) A[j][k + 1] = p[j];
         }
-        w = width; inv2w = 0.5 / w; n = 1.0;
+        W = width; invW2 = 1.0 / (W * W); n = 1.0;
         double pk = 0.0; // normalise the rounded curve to peak ±1
-        for (int i = 0; i <= 4000; ++i) pk = std::max (pk, std::fabs (f (b[K] * i / 4000.0)));
+        for (int i = 0; i <= 4000; ++i) pk = std::max (pk, std::fabs (f ((b[K] + W) * i / 4000.0)));
         n = 1.0 / pk;
     }
 
-    // ADAA kernel concept
-    double f  (double u) const { return n * (P<1> (u + w) - P<1> (u - w)) * inv2w; }
-    double F1 (double u) const { return n * (P<2> (u + w) - P<2> (u - w)) * inv2w; }
-    double F2 (double u) const { return n * (P<3> (u + w) - P<3> (u - w)) * inv2w; }
+    // ADAA kernel concept: triangle-kernel smoothing of half-support W is the
+    // second difference of the next-higher antiderivative over W^2.
+    double f  (double u) const { return n * (P<2> (u + W) - 2.0 * P<2> (u) + P<2> (u - W)) * invW2; }
+    double F1 (double u) const { return n * (P<3> (u + W) - 2.0 * P<3> (u) + P<3> (u - W)) * invW2; }
+    double F2 (double u) const { return n * (P<4> (u + W) - 2.0 * P<4> (u) + P<4> (u - W)) * invW2; }
 
 private:
-    void segP (int k, double t, double& p1, double& p2, double& p3) const
+    // P_j over segment k at offset t from b[k-1] (Taylor of a linear piece)
+    void segP (int k, double t, double (&p)[5]) const
     {
-        const double vv = v[k - 1], mm = m[k], t2 = t * t;
-        p1 = A1[k] + vv * t + mm * t2 * 0.5;
-        p2 = A2[k] + A1[k] * t + vv * t2 * 0.5 + mm * t2 * t * (1.0 / 6.0);
-        p3 = A3[k] + A2[k] * t + A1[k] * t2 * 0.5 + vv * t2 * t * (1.0 / 6.0)
-             + mm * t2 * t2 * (1.0 / 24.0);
+        const double vv = v[k - 1], mm = m[k], t2 = t * t, t3 = t2 * t;
+        p[1] = A[1][k] + vv * t + mm * t2 * 0.5;
+        p[2] = A[2][k] + A[1][k] * t + vv * t2 * 0.5 + mm * t3 * (1.0 / 6.0);
+        p[3] = A[3][k] + A[2][k] * t + A[1][k] * t2 * 0.5 + vv * t3 * (1.0 / 6.0)
+               + mm * t2 * t2 * (1.0 / 24.0);
+        p[4] = A[4][k] + A[3][k] * t + A[2][k] * t2 * 0.5 + A[1][k] * t3 * (1.0 / 6.0)
+               + vv * t2 * t2 * (1.0 / 24.0) + mm * t3 * t2 * (1.0 / 120.0);
     }
+    // pl odd -> P1 even, P2 odd, P3 even, P4 odd (evaluated on |u|)
     template <int Order>
     double P (double u) const
     {
         const double a = std::fabs (u);
         int k = 1;
         while (k <= K && a > b[k]) ++k; // k = K + 1: the hold segment
-        const double t = a - b[k - 1], vv = v[k - 1], mm = m[k], t2 = t * t;
-        if constexpr (Order == 1)
-            return A1[k] + vv * t + mm * t2 * 0.5;                       // even
-        else if constexpr (Order == 2)
-        {
-            const double p = A2[k] + A1[k] * t + vv * t2 * 0.5 + mm * t2 * t * (1.0 / 6.0);
-            return u < 0.0 ? -p : p;                                      // odd
-        }
-        else
-            return A3[k] + A2[k] * t + A1[k] * t2 * 0.5 + vv * t2 * t * (1.0 / 6.0)
-                   + mm * t2 * t2 * (1.0 / 24.0);                         // even
+        double p[5];
+        segP (k, a - b[k - 1], p);
+        if constexpr (Order % 2 == 0) return u < 0.0 ? -p[Order] : p[Order];
+        else return p[Order];
     }
 };
 
-// Full-wave rectifier |x| (VCM BOT stages).
-struct AbsKernel
+// VCM BOT composite: the whole three-stage rectifier cascade at the current
+// depth, expanded into ONE polynomial of the normalised input u (degree <= 8),
+// ADAA1-wrapped as a single kernel (DspUtils rule: one kernel per island).
+// Each stage is the level-compensated square-law full-wave rectifier
+//   r(y) = 2·y² − 1      (|y| ≤ 1: rectified, doubled, re-centred to ±1)
+// crossfaded by its amount a:  y' = y + a·(r(y) − y)  =  2a·y² + (1−a)·y − a.
+// Coefficients are rebuilt only when the depth changes.
+struct RectCascadeKernel
 {
-    double f  (double x) const { return std::fabs (x); }
-    double F1 (double x) const { return 0.5 * x * std::fabs (x); }
-    double F2 (double x) const { return x * x * std::fabs (x) * (1.0 / 6.0); }
+    static constexpr int kDeg = 8;
+    double c[kDeg + 1] {}, C[kDeg + 2] {}; // P(u) and its antiderivative
+
+    void build (const float (&a)[3])
+    {
+        double p[kDeg + 1] {}; p[1] = 1.0; // y0 = u
+        int deg = 1;
+        for (int k = 0; k < 3; ++k)
+        {
+            const double ak = a[k];
+            if (ak <= 0.0) continue;
+            double sq[kDeg + 1] {};
+            for (int i = 0; i <= deg; ++i)
+                for (int j = 0; j <= deg && i + j <= kDeg; ++j) sq[i + j] += p[i] * p[j];
+            deg = std::min (kDeg, 2 * deg);
+            for (int i = 0; i <= deg; ++i) p[i] = 2.0 * ak * sq[i] + (1.0 - ak) * p[i];
+            p[0] -= ak;
+        }
+        for (int i = 0; i <= kDeg; ++i) c[i] = p[i];
+        C[0] = 0.0;
+        for (int i = 0; i <= kDeg; ++i) C[i + 1] = c[i] / (double) (i + 1);
+    }
+    double f (double u) const
+    {
+        double y = c[kDeg];
+        for (int i = kDeg - 1; i >= 0; --i) y = y * u + c[i];
+        return y;
+    }
+    double F1 (double u) const
+    {
+        double y = C[kDeg + 1];
+        for (int i = kDeg; i >= 0; --i) y = y * u + C[i];
+        return y;
+    }
+};
+
+// RING input stage: exactly linear up to |u| = c (c = 2 -> 5 V at the
+// 2.5 V-normalised input), then a tanh shoulder of width k (a hot ±10 V input
+// rounds off near c + k). Linear-then-soft so an offset (unipolar 0..5 V)
+// carrier is never bent: a bent offset carrier grows its own 2nd harmonic,
+// i.e. X ± 2·Y products a four-quadrant multiplier does not make.
+struct LinSoftKernel
+{
+    static constexpr double c = 2.0, k = 1.0;
+    double f (double u) const
+    {
+        const double a = std::fabs (u);
+        if (a <= c) return u;
+        const double y = c + k * std::tanh ((a - c) / k);
+        return u < 0.0 ? -y : y;
+    }
+    double F1 (double u) const
+    {
+        const double a = std::fabs (u);
+        if (a <= c) return 0.5 * u * u;
+        const double t = (a - c) / k; // log cosh, overflow-safe
+        return 0.5 * c * c + c * (a - c) + k * k * (t + std::log1p (std::exp (-2.0 * t)) - 0.6931471805599453);
+    }
 };
 
 // Rail safety: exactly linear below 10 V, soft to 12 V (VCFQ pattern).
@@ -197,11 +258,15 @@ public:
         leds.resize (1);
     }
 
+    // Read-only probe (tests): MID output makeup gain at the current fold.
+    float midMakeup() const { return makeup; }
+
     void prepare (double sampleRate) override
     {
         Module::prepare (sampleRate);
         smoothK = 1.0f - std::exp (-1.0f / (0.002f * sr)); // ~2 ms knob lag
-        envRel  = std::exp (-1.0f / (kEnvTau * 2.0f * sr)); // runs at the 2x rate
+        envHoldN = std::max (1, (int) std::lround (kEnvHold * 2.0f * sr)); // 2x rate
+        envRelK  = 1.0f - std::exp (-1.0f / (kEnvRelTau * 2.0f * sr));
         dcK     = 1.0f - std::exp (-2.0f * 3.14159265f * kSqDcHz / (2.0f * sr));
 
         foldS.snap  (ctls[cFold].v,     mapFold);
@@ -210,11 +275,12 @@ public:
         depthS.snap (ctls[cBotDepth].v, mapUnit);
 
         foldNL.kernel.configure (kFoldTurns, kFoldDecay, kFoldShrink, kFoldW);
+        buildMakeup();
         foldNL.reset();
         upMid.prepare(); dnMid.prepare();
         resetTop();
         resetBot();
-        lastFoldExp = 1.0e9f; foldMul = 1.0f;
+        lastFoldExp = 1.0e9f; foldMul = 1.0f; makeup = 1.0f;
         lastTopV    = 1.0e9f; topMul  = 1.0f;
         topActive = botActive = false;
         for (auto& j : jacks) j.value = 0.0f;
@@ -228,7 +294,11 @@ public:
         const float bias = biasS.tick (ctls[cBias].v, smoothK, mapBias); // ±1 folder units
         const float foldExp = fold + kFoldCvOctPerV * in (jVcFold);
         if (differs (foldExp, lastFoldExp))
-        { lastFoldExp = foldExp; foldMul = std::clamp (0.5f * std::exp2 (foldExp), kFoldMin, kFoldMax); }
+        {
+            lastFoldExp = foldExp;
+            foldMul = std::clamp (0.5f * std::exp2 (foldExp), kFoldMin, kFoldMax);
+            makeup  = makeupFor (foldMul);
+        }
         // two inputs mix before processing (hardware); gain applied before
         // upsampling so audio-rate fold CV stays band-limited too
         const float u = foldMul * (in (jMidIn1) + in (jMidIn2)) * (1.0f / kAudio) + bias;
@@ -236,7 +306,7 @@ public:
         upMid.process (u, ua, ub);
         const float ya = foldNL.process (ua);
         const float yb = foldNL.process (ub);
-        const float mid = flushDenorm (shapers::railLimit (kAudio * dnMid.process (ya, yb)));
+        const float mid = flushDenorm (shapers::railLimit (kAudio * makeup * dnMid.process (ya, yb)));
         jacks[jMidOut].value = mid;
 
         // ---- TOP: LO linear VCA / HI VC rounded clip -----------------------
@@ -282,16 +352,26 @@ public:
         {
             botActive = true;
             const float depth = std::clamp (depthK + in (jVcBot) * (1.0f / kCV), 0.0f, 1.0f);
-            const float d3 = 3.0f * depth;
-            const float a[3] = { std::clamp (d3,        0.0f, 1.0f),
-                                 std::clamp (d3 - 1.0f, 0.0f, 1.0f),
-                                 std::clamp (d3 - 2.0f, 0.0f, 1.0f) };
+            if (differs (depth, lastDepth))
+            {
+                lastDepth = depth;
+                const float d3 = 3.0f * depth;
+                const float a[3] = { std::clamp (d3,        0.0f, 1.0f),
+                                     std::clamp (d3 - 1.0f, 0.0f, 1.0f),
+                                     std::clamp (d3 - 2.0f, 0.0f, 1.0f) };
+                rectNL.kernel.build (a);
+                // power compensation of the one partially-faded stage: the dry
+                // and rectified parts are orthogonal octaves for a sine, so a
+                // linear crossfade would dip 3 dB mid-way
+                botComp = 1.0f;
+                for (float ak : a) botComp /= std::sqrt ((1.0f - ak) * (1.0f - ak) + ak * ak);
+            }
             const float xb = (in (jBotIn1) + in (jBotIn2)) * (1.0f / kAudio);
             float x0, x1;
             upBot.process (xb, x0, x1);
             float b0, s0, b1, s1;
-            botStep (x0, a, b0, s0);
-            botStep (x1, a, b1, s1);
+            botStep (x0, b0, s0);
+            botStep (x1, b1, s1);
             jacks[jBotOut].value = flushDenorm (shapers::railLimit (kAudio * dnBot.process (b0, b1)));
             jacks[jBotSq].value  = flushDenorm (shapers::railLimit (kAudio * dnSq.process (s0, s1)));
         }
@@ -315,10 +395,12 @@ private:
     static constexpr int    kFoldTurns     = 6;      // reflector-cascade turnarounds, then hold
     static constexpr double kFoldDecay     = 0.5;    // successive fold-peak amplitude ratio
     static constexpr double kFoldShrink    = 1.15;   // successive fold-spacing ratio (denser outward)
-    static constexpr double kFoldW         = 1.0;    // knee rounding half-width (folder units)
+    static constexpr double kFoldW         = 0.8;    // knee smoothing half-support (triangle kernel, folder units)
     static constexpr float  kTopCvOctPerV  = 0.4f;   // HI drive CV, same law as fold
     static constexpr float  kTopMaxDrive   = 40.0f;
-    static constexpr float  kEnvTau        = 0.1f;   // rectifier level-compensation release (s)
+    static constexpr float  kEnvHold       = 0.05f;  // BOT peak window (s): steady >= 20 Hz -> exact peak
+    static constexpr float  kEnvRelTau     = 0.005f; // BOT peak release smoothing toward the window max (s)
+    static constexpr float  kEnvMin        = 1.0e-3f;// BOT normaliser floor (2.5 mV)
     static constexpr float  kEnvFloor      = 0.02f;  // SQ normaliser floor (50 mV): silence -> 0
     static constexpr float  kSqGain        = 8.0f;   // squared-up slope
     static constexpr float  kSqDcHz        = 4.0f;   // SQ threshold tracker (AC-coupling corner)
@@ -328,23 +410,67 @@ private:
     static float mapDrive (float v) { return dsp::expmap (v, 1.0f, 10.0f); }
     static float mapUnit  (float v) { return std::clamp (v, 0.0f, 1.0f); }
 
-    // One 2x-rate step of the rectifier cascade. Stage k (amount a_k):
-    //   r_k = 2·|y| − env_k   full-wave rectify + level compensation: a wave
-    //                         of peak A becomes a doubled-frequency wave that
-    //                         still spans ±A (env_k = peak follower of y)
-    //   y   = ym + a_k·(r_k − ym), ym = y delayed half a sample to line up
-    //                         with the ADAA1 output.
-    void botStep (float x, const float (&a)[3], float& bot, float& sq)
+    // ---- MID level compensation ------------------------------------------
+    // A folder holds its level as it folds: the output stage's makeup gain
+    // tracks the fold gain so a nominal (2.5 V) sine comes out at the same
+    // RMS at every FOLD setting, referenced to the default FOLD (makeup 1
+    // there, so the default voice is level-unchanged). Tabulated at
+    // configure time from the kernel's own static curve: rms of
+    // f(g·sin) over 256 phases, 32 points/octave over the FOLD-knob gain
+    // range 0.5x..16x. Below 0.5x (negative VC FOLD) the makeup is held, so
+    // the section fades out as a plain attenuator. Capped at 2x so the
+    // deepest folds peak at <= 5 V (they sit ~2 dB under the default level
+    // instead of the uncompensated ~8 dB).
+    static constexpr int   kMkPerOct = 32;
+    static constexpr float kMkLog2Lo = -1.0f;                  // 0.5x
+    static constexpr float kMkLog2Hi = 4.0f;                   // 16x
+    static constexpr int   kMkN = (int) ((kMkLog2Hi - kMkLog2Lo) * kMkPerOct) + 1;
+    static constexpr float kMkRefFold = 0.3f;                  // FOLD ctl default
+    static constexpr double kMkMax = 2.0;                      // fold peaks stay <= 2x nominal (5 V)
+    double foldRms (double g) const
     {
-        float y = x;
-        for (int k = 0; k < 3; ++k)
+        double acc = 0.0;
+        for (int i = 0; i < 256; ++i)
         {
-            env[k] = std::max (std::fabs (y), flushDenorm (env[k] * envRel));
-            const float r  = 2.0f * rect[k].process (y) - env[k];
-            const float ym = 0.5f * (y + yPrev[k]);
-            yPrev[k] = y;
-            y = ym + a[k] * (r - ym);
+            const double y = foldNL.kernel.f (g * std::sin (6.283185307179586 * (i + 0.5) / 256.0));
+            acc += y * y;
         }
+        return std::sqrt (acc / 256.0);
+    }
+    void buildMakeup()
+    {
+        const double ref = foldRms (0.5 * std::exp2 (4.0 * kMkRefFold));
+        for (int i = 0; i < kMkN; ++i)
+            mkTab[i] = (float) std::min (kMkMax, ref / foldRms (std::exp2 (kMkLog2Lo + (double) i / kMkPerOct)));
+    }
+    float makeupFor (float g) const
+    {
+        const float x = std::clamp ((std::log2 (std::max (g, 1.0e-6f)) - kMkLog2Lo) * (float) kMkPerOct,
+                                    0.0f, (float) (kMkN - 1));
+        const int i = std::min ((int) x, kMkN - 2);
+        const float t = x - (float) i;
+        return mkTab[i] + t * (mkTab[i + 1] - mkTab[i]);
+    }
+
+    // One 2x-rate step of the rectifier cascade (RectCascadeKernel). Level
+    // compensation = the input's own peak: env is the max |x| over a sliding
+    // 50..100 ms window (instant attack, 5 ms release toward the window max),
+    // so for any steady input >= 20 Hz env is exactly the peak, with no
+    // per-cycle ripple. u = x/env spans ±1; every stage maps ±1 onto ±1, so
+    // the doubled wave keeps the input's amplitude ("not accompanied by a
+    // reduction in output amplitude") and stays centred, which is what lets
+    // the next stage double it again: a sine goes H1 -> H2 -> H4 -> H8 as
+    // the depth sweeps through the three stages.
+    void botStep (float x, float& bot, float& sq)
+    {
+        const float ax = std::fabs (x);
+        if (ax > curMax) curMax = ax;
+        if (++holdCount >= envHoldN) { prevMax = curMax; curMax = 0.0f; holdCount = 0; }
+        const float target = std::max (curMax, prevMax);
+        if (target >= botEnv) botEnv = target;
+        else botEnv = flushDenorm (botEnv + envRelK * (target - botEnv));
+        const float e = std::max (botEnv, kEnvMin);
+        const float y = botEnv * botComp * rectNL.process (x / e);
         bot = y;
         // squared-up 2nd output: high-gain rounded comparator of the cascade
         // output against its own running mean (AC-coupled threshold), level-
@@ -353,13 +479,13 @@ private:
         // moves with depth — "resembling enhanced PWM" (hardware-spec §2.5).
         yDc += dcK * (y - yDc);
         yDc = flushDenorm (yDc);
-        sq  = sqNL.process (kSqGain * (y - yDc) / (env[0] + kEnvFloor));
+        sq  = sqNL.process (kSqGain * (y - yDc) / (botEnv + kEnvFloor));
     }
     void resetBot()
     {
-        upBot.prepare(); dnBot.prepare(); dnSq.prepare(); sqNL.reset();
-        yDc = 0.0f;
-        for (int k = 0; k < 3; ++k) { rect[k].reset(); env[k] = 0.0f; yPrev[k] = 0.0f; }
+        upBot.prepare(); dnBot.prepare(); dnSq.prepare(); sqNL.reset(); rectNL.reset();
+        yDc = 0.0f; botEnv = curMax = prevMax = 0.0f; holdCount = 0;
+        lastDepth = -1.0f; botComp = 1.0f;
     }
     void resetTop()
     {
@@ -367,15 +493,18 @@ private:
         topHiPrimed = false;
     }
 
-    float smoothK = 0.01f, envRel = 0.9999f, dcK = 0.0003f, yDc = 0.0f;
+    float smoothK = 0.01f, envRelK = 0.002f, dcK = 0.0003f, yDc = 0.0f;
+    int envHoldN = 4800, holdCount = 0;
+    float botEnv = 0.0f, curMax = 0.0f, prevMax = 0.0f, lastDepth = -1.0f, botComp = 1.0f;
     shapers::Smoothed foldS, biasS, driveS, depthS;
     float lastFoldExp = 1.0e9f, foldMul = 1.0f, lastTopV = 1.0e9f, topMul = 1.0f;
     bool topActive = false, botActive = false, topHiPrimed = false;
 
     dsp::ADAA2<shapers::FoldKernel> foldNL;
     dsp::ADAA1<dsp::TanhKernel> topNL, sqNL;
-    dsp::ADAA1<shapers::AbsKernel> rect[3];
-    float env[3] {}, yPrev[3] {};
+    dsp::ADAA1<shapers::RectCascadeKernel> rectNL;
+    float makeup = 1.0f;
+    float mkTab[kMkN] {};
 
     dsp::IirUpsampler2x   upMid, upTop, upBot;
     dsp::IirDownsampler2x dnMid, dnTop, dnBot, dnSq;
@@ -451,9 +580,11 @@ public:
     }
 
     // Feedthrough law (amplitude re unity, per trim t in 0..1):
-    //   bleed(t) = -90 + 50·sqrt(t) dB  ->  t = 0: -90 (<= -80 calibrated min),
-    //   t = 0.15 (default): -70.6 (inside the -60..-80 "subtle" band),
-    //   t = 1: -40 (>= -50 audible bleed). Monotonic.
+    //   bleed(t) = -102 + 62·sqrt(t) dB  ->  t = 0: -102 (<= -80 calibrated
+    //   min), t = 0.15 (default): -78.0 (inside the -60..-80 "subtle" band,
+    //   ~80 dB carrier rejection as documented for the R*S RING), t = 1: -40
+    //   (>= -50 audible bleed). Monotonic. (Was -90 + 50·sqrt(t), default
+    //   -70.6 dB; retuned 2026-11-05, LOG.md.)
     static float bleedLaw (float t)
     {
         const float dB = kBleedMinDb + kBleedSpanDb * std::sqrt (std::clamp (t, 0.0f, 1.0f));
@@ -461,34 +592,35 @@ public:
     }
 
 private:
-    static constexpr float kAx = 0.35f;          // signal-side transconductance drive
-    static constexpr float kAy = 0.35f;          // carrier-side drive (rounds hot carriers)
-    static constexpr float kBleedMinDb  = -90.0f;
-    static constexpr float kBleedSpanDb = 50.0f;
+    static constexpr float kBleedMinDb  = -102.0f;
+    static constexpr float kBleedSpanDb = 62.0f;
 
     static float mapGain (float v) { return dsp::expmap (v, 0.5f, 4.0f); }
     static float mapUnit (float v) { return std::clamp (v, 0.0f, 1.0f); }
 
-    // Four-quadrant transconductance core at 2x: tanh(ax·X)·tanh(ay·Y),
-    // normalised (small-signal X gain 1; Y = nominal 2.5 V -> factor 1);
+    // Four-quadrant multiplier core at 2x: X·Y with each input through the
+    // linear-then-soft input stage (exact product up to ±5 V on both sides;
+    // hot inputs round off), normalised so Y = 2.5 V is a factor of 1;
     // morph m: X·[(1−m) + m·Y] (0 dry, 0.5 = 100 % AM, 1 = balanced ring);
     // plus the trimmed X/Y feedthrough, aligned to the ADAA half-sample delay.
+    // (Was tanh(0.35·X)·tanh(0.35·Y): its curvature bent a unipolar 0..5 V
+    // carrier, adding Y's 2nd harmonic -> X ± 2·fY products at -32 dBc, and
+    // gave X a 1 % H3. LOG.md 2026-11-05.)
     float core (float ux, float uy, float m)
     {
-        const float xs = nlX.process (kAx * ux) * (1.0f / kAx);
-        const float ys = nlY.process (kAy * uy) * yNorm;
+        const float xs = nlX.process (ux);
+        const float ys = nlY.process (uy);
         const float uxm = 0.5f * (ux + uxPrev); uxPrev = ux;
         const float uym = 0.5f * (uy + uyPrev); uyPrev = uy;
         return xs * ((1.0f - m) + m * ys) + betaX * uxm + betaY * uym;
     }
 
     float smoothK = 0.01f;
-    const float yNorm = 1.0f / std::tanh (kAy);
     shapers::Smoothed gainS, morphS;
     float trimXCache = -1.0f, trimYCache = -1.0f, betaX = 0.0f, betaY = 0.0f;
     float sgnX = 1.0f, sgnY = 1.0f;
     float uxPrev = 0.0f, uyPrev = 0.0f;
-    dsp::ADAA1<dsp::TanhKernel> nlX, nlY;
+    dsp::ADAA1<shapers::LinSoftKernel> nlX, nlY;
     dsp::IirUpsampler2x   upX, upY;
     dsp::IirDownsampler2x dn;
 };
