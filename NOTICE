@@ -1,0 +1,18 @@
+Serge Animal TKB
+Copyright (C) 2024-2026 Mark Renker (Renky Denk)
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, version 3 of the License (see LICENSE).
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.
+
+Third-party components
+- JUCE (https://juce.com), used under its AGPLv3 open-source licence.
+- The VST3 plug-in format is provided by Steinberg's VST3 SDK, bundled with JUCE.
+  VST is a registered trademark of Steinberg Media Technologies GmbH.
+- "Serge" refers to the modular synthesizer designs of Serge Tcherepnin. This is
+  an independent software recreation, not affiliated with or endorsed by Serge,
+  Random*Source, Sound Transform Systems or any hardware maker.
