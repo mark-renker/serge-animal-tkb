@@ -257,7 +257,7 @@ inline void runT02()
     }
     {
         const int n = 16384;
-        auto grab = [] (int jack)
+        auto grab = [n] (int jack) // capture n: MSVC requires it (passed by reference)
         { Solo s; s.n->ctls[NTO::cFreq].v = 1.0f; s.run (9600); return s.capture (jack, n); };
         auto sn = grab (NTO::jSine), tr = grab (NTO::jTri), sa = grab (NTO::jSaw), pu = grab (NTO::jPulse);
         double aS = 0, aT = 0, aW = 0;
