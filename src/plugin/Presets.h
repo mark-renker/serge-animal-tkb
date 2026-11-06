@@ -144,8 +144,8 @@ inline const std::vector<Preset>& all()
                 { "vcm",  VCM::cBotDepth, 0.45f },
                 { "vcfq", VCFQ::cFreq, expPos (500.0f, 20.0f, 12000.0f) }, { "vcfq", VCFQ::cQ, expPos (4.0f, 0.5f, 40.0f) },
                 { "vcfq", VCFQ::cVcFAmt, av (0.35f) },
-                { "vca1", VCA::cLevel, 0.30f }, { "vca1", VCA::cResponse, 0 }, // levels trimmed so programs
-                { "vca2", VCA::cLevel, 0.25f }, { "vca2", VCA::cResponse, 0 }, // sit near the default voice
+                { "vca1", VCA::cLevel, 0.17f }, { "vca1", VCA::cResponse, 0 }, // levels trimmed so programs
+                { "vca2", VCA::cLevel, 0.14f }, { "vca2", VCA::cResponse, 0 }, // sit near the default voice (re-trimmed for sound-r2)
             };
             x.cables = {
                 { "nto",  NTO::jVar, "ring", RING::jX },
