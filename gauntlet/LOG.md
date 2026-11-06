@@ -976,3 +976,18 @@ negative control each round). v2 verdicts vs v1 on scored pieces:
   3. NTO VAR morph is odd-symmetric throughout (no saw-like midpoint); the hardware text
      names only the sine and pulse/'M' endpoints (r3 interpretation).
   4. Minor: DUSG-env carrier H3 −43.8 dBc, mostly from the OUT bus soft limiter.
+
+## 2026-11-05 — Phase 5: final validation on the release candidate (main cbf0509)
+
+- G1: clean Release build from `git archive`, universal (lipo: x86_64 arm64 for AU and
+  VST3), 0 warnings in our sources (the t_nto lambda now uses a static constexpr n, so it
+  is warning-free on clang and MSVC-compatible).
+- G2: satk_gauntlet 232/232. G2u: satk_uxtests 30/30.
+- G5: installed to ~/Library/Audio/Plug-Ins/{Components,VST3} as "Serge Animal TKB v2"
+  next to v1 (both registered: aumu Sat2 Rnky / aumu Satk Rnky).
+- G3: `auval -v aumu Sat2 Rnky`: AU VALIDATION SUCCEEDED, 0 warnings.
+- G4: pluginval 1.0.4 --strictness-level 10, installed AU: SUCCESS (Num programs 7;
+  informational "Current program is -1" on the AU only); installed VST3: SUCCESS
+  (Num programs 7).
+- Both soft bars closed (UI by Mark's approval at the cap; sound after r4). v2.0.0
+  release candidate.
