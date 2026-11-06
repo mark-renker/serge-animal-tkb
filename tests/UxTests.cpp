@@ -197,8 +197,13 @@ int main()
         CHECK (proc.getCurrentProgram() == 4 && proc.cableSnapshot().size() == pr4.cables.size(),
                "setCurrentProgram applies the preset's full cable set", (double) proc.cableSnapshot().size(),
                (double) pr4.cables.size());
+        // expected value comes from the preset data itself (survives re-trims)
+        float want = -1.0f;
+        for (const auto& c : pr4.ctls)
+            if (juce::String (c.mod) == "vca1" && c.ctl == satk::VCA::cLevel) want = c.value;
         const float vca1Lvl = proc.apvts.getRawParameterValue ("vca1_0")->load();
-        CHECK (std::abs (vca1Lvl - 0.30f) < 1e-4f, "setCurrentProgram applies the preset's knob values", vca1Lvl);
+        CHECK (want >= 0.0f && std::abs (vca1Lvl - want) < 1e-4f,
+               "setCurrentProgram applies the preset's knob values", vca1Lvl, want);
         CHECK (ed->presetBox.getSelectedId() == 5, "editor PRESET menu follows the current program",
                ed->presetBox.getSelectedId());
         ed->presetBox.setSelectedId (1, juce::sendNotificationSync); // back to Default Voice via the menu
