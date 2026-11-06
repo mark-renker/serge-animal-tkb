@@ -9,8 +9,9 @@
 //     pure sine of the core phase) plus a gentle smooth odd compression as
 //     the hardware-like residual (~0.25% THD, H3 only; T04 THD <= 2%; was an
 //     under-driven shaper with a peak kink until 2026-11-05, LOG.md); VAR =
-//     the shaper from a slightly under-driven start, overdriven until it
-//     folds into an 'M', then squared up toward a pulse (VC shape);
+//     the same shaper from an exact-sine start (drive 1; an under-driven
+//     0.94 with a peak kink until 2026-11-06), overdriven until it folds
+//     into an 'M', then squared up toward a pulse (VC shape);
 //   - SINE/TRI/SAW/VAR decimated by the low-latency IIR halfband (LOG 2026-11-02:
 //     the NTO sits inside patchable sync/FM loops, keep loop latency small);
 //   - SOFT sync = bounded phase nudge: on a SYNC edge the core is pulled a
@@ -201,7 +202,7 @@ private:
     static constexpr float kMaxHz     = 40000.0f;  // > 32 kHz via CV (T02); 2x core inc <= 0.42
     static constexpr float kMaxInc    = 0.45f;     // per internal sample (polyBLEP needs < 0.5)
     static constexpr float kLinFmHpHz = 2.0f;      // LIN FM AC coupling corner
-    static constexpr float kVarBase   = 0.94f;     // VAR shaper drive at shape 0 (under-driven: soft 'M' onset)
+    static constexpr float kVarBase   = 1.0f;      // VAR shaper drive at shape 0: exact sine (r3; was 0.94, a kinked start)
     static constexpr float kSineComp  = 0.01f;     // SINE: gentle odd compression of the exact sine, ~0.25% THD
     static constexpr float kVarFold   = 2.0f;      // shaper drive at shape 1 (folds into 'M')
     static constexpr float kVarSquare = 6.0f;      // tanh squaring drive at shape 1

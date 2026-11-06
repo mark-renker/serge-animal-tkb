@@ -348,6 +348,39 @@ void renderControlRing()
     render (j, "control/ring_bipolar_leaky.wav", 5.0);
 }
 
+// Round-3 negative control (sound-r3 packet, dusg_env piece): the
+// dusg_env_shape patch and level path (NTO SINE 1 kHz -> VCA2 LIN, LEVEL 0
+// -> OUT IN 2, PAN 0.5, MASTER 0.4, same three KEY transients), but VCA2's
+// VC is a degraded "slope generator": an RC (capacitor-charge) envelope —
+// exponential approach toward 5 V for the 0.5 s rise (tau = 0.5 s / ln 100,
+// 99 % at the end of the rise), then exponential discharge for the 1.0 s
+// fall (tau = 1.0 s / ln 100). An ADSR-style RC curve instead of the Serge's
+// linear-by-design slopes: T05d mid-80 % deviation far above 3 % FS.
+void renderControlDusgRc()
+{
+    Job j; j.drift (0.0f); j.ntoHz (1000.0);
+    j.sys.patch (j.sys.nto, NTO::jSine, j.sys.vca2, VCA::jIn);
+    j.sys.patch (j.sys.vca2, VCA::jOut, j.sys.out, OUT::jIn2);
+    j.sys.vca2->ctls[VCA::cResponse].v = 0.0f;
+    j.sys.vca2->ctls[VCA::cLevel].v = 0.0f;
+    j.sys.out->ctls[OUT::cPan2].v = 0.5f;
+    j.sys.out->ctls[OUT::cMaster].v = 0.4f;
+    static float rc = 0.0f;
+    rc = 0.0f;
+    VCA* vca = j.sys.vca2;
+    j.at (0.0, [vca] { vca->feeds[(size_t) VCA::jVc].src.push_back (&rc); }); // after prepare()'s rebuild
+    const double kr = 1.0 - std::exp (-std::log (100.0) / (0.5 * kSR));
+    const double kf = 1.0 - std::exp (-std::log (100.0) / (1.0 * kSR));
+    j.perSample = [kr, kf] (long i)
+    {
+        const long starts[3] = { std::lround (0.3 * kSR), std::lround (2.4 * kSR), std::lround (4.5 * kSR) };
+        bool rising = false;
+        for (long s0 : starts) rising |= i >= s0 && i < s0 + std::lround (0.5 * kSR);
+        rc += (float) ((rising ? (double) kCV - rc : -(double) rc) * (rising ? kr : kf));
+    };
+    render (j, "control/dusg_env_rc.wav", 6.5);
+}
+
 } // namespace
 
 int main (int argc, char** argv)
@@ -357,6 +390,7 @@ int main (int argc, char** argv)
     renderSupplementary();
     renderControl();
     renderControlRing();
+    renderControlDusgRc();
     std::printf ("done.\n");
     return 0;
 }

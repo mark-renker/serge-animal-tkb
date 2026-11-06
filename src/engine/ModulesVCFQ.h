@@ -122,6 +122,7 @@ private:
     static constexpr float kPiF      = 3.14159265f;
     static constexpr float kInClip   = 10.0f;    // input-stage soft clip (V)
     static constexpr float kIntClip  = 10.0f;    // integrator clip ~ ±10 V rails
+    static constexpr float kIntLin   = 5.0f;     // integrators exactly linear below (V)
     static constexpr float kOutClip  = 11.0f;    // output stage limit (< ±12 V rails)
     static constexpr float kDampKnee = 6.0f;     // amplitude-dependent damping onset (V)
     static constexpr float kDamp     = 1.0f;     // extra damping slope above the knee
@@ -132,7 +133,19 @@ private:
     static constexpr float kPingClip = 3.5f;     // diode-clipped ping top (V)
     static constexpr float kPingTau  = 0.25e-3f; // ping decay tau -> ~0.5-1 ms pulse
 
-    static float satInt  (float v) { return kIntClip * dsp::fastTanh (v * (1.0f / kIntClip)); }
+    // Integrator input stage: exactly linear up to kIntLin, then a tanh
+    // shoulder to the ±kIntClip ceiling. (Was kIntClip·tanh(v/kIntClip)
+    // everywhere: its small-signal compression lowered the ringing pitch with
+    // level — a PING LEVEL 0.9 ping at Q 35 rang 6 cents flat. LOG.md
+    // 2026-11-06, sound round 3.)
+    static float satInt (float v)
+    {
+        const float a = std::fabs (v);
+        if (a <= kIntLin) return v;
+        constexpr float w = kIntClip - kIntLin;
+        const float y = kIntLin + w * dsp::fastTanh ((a - kIntLin) * (1.0f / w));
+        return v < 0.0f ? -y : y;
+    }
     static float railLimit (float v)
     {
         const float a = std::fabs (v);

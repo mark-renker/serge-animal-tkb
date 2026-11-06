@@ -239,10 +239,12 @@ public:
             g = std::clamp (vcSm * (1.0f / kCV), 0.0f, 1.0f);
         }
 
-        // Soft saturation at hot levels (nominal +-2.5 V x max gain 2 passes
-        // nearly clean; beyond that it rounds off analog-style).
-        const float y = in (jIn) * g;
-        jacks[jOut].value = flushDenorm (kSatV * dsp::fastTanh (y * (1.0f / kSatV)));
+        // Output stage: exactly linear up to +-5 V (nominal +-2.5 V audio x
+        // the +6 dB max gain), then a soft tanh shoulder toward +-8 V for hot
+        // inputs. (Was 8·tanh(y/8) everywhere: at a nominal 2.5 V it already
+        // added H3 at -40 dBc and bent a linear envelope by ~9 % slope at the
+        // top of the swing — LOG.md 2026-11-06, sound round 3.)
+        jacks[jOut].value = flushDenorm (outStage (in (jIn) * g));
         leds[0] = std::min (1.0f, 0.5f * g);
     }
 
@@ -251,7 +253,17 @@ private:
     static constexpr float kCvTau      = 0.0012f;      // CV smoothing tau (s)
     static constexpr float kKneeGain   = 0.00390625f;  // 2^-8 = gain at the 0.5 V knee
     static constexpr float kKneeOctPerV = 99.658f;     // ~600 dB/V below the knee
-    static constexpr float kSatV       = 8.0f;         // soft-sat scale (volts)
+    static constexpr float kLinV       = 5.0f;         // output stage exactly linear below (volts)
+    static constexpr float kSatV       = 8.0f;         // soft ceiling (volts)
+
+    static float outStage (float y)
+    {
+        const float a = std::fabs (y);
+        if (a <= kLinV) return y;
+        constexpr float w = kSatV - kLinV;
+        const float o = kLinV + w * dsp::fastTanh ((a - kLinV) * (1.0f / w));
+        return y < 0.0f ? -o : o;
+    }
 
     float cvCoeff = 0.03f, vcSm = 0.0f;
 };

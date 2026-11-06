@@ -369,6 +369,33 @@ inline void runT11()
                "LIN mode: gain = clamp01(level + V/5)", gHalf, gFull);
     }
 
+    // round 3 (2026-11-06): the output stage is exactly linear at nominal
+    // levels — a 2.5 V 1 kHz sine at unity (LIN 5 V) and at the +6 dB max
+    // (EXP 5 V -> 5 V peak) carries no added H3. (The old 8·tanh(y/8) stage
+    // gave H3 -40 / -30 dBc, which put a 3 kHz partial on every enveloped
+    // 1 kHz carrier and bent linear envelopes at the top of the swing.)
+    {
+        auto h3 = [] (bool lin)
+        {
+            VcaProbe q;
+            q.vca->ctls[VCA::cResponse].v = lin ? 0.0f : 1.0f;
+            q.cv = kCV;
+            for (int i = 0; i < 9600; ++i) q.tickSine (kAudio);
+            Goertzel g1, g3; g1.init (1000.0); g3.init (3000.0);
+            for (int i = 0; i < 24000; ++i)
+            {
+                q.tickSine (kAudio);
+                g1.push (q.vca->jacks[VCA::jOut].value);
+                g3.push (q.vca->jacks[VCA::jOut].value);
+            }
+            return db (g3.amp(), g1.amp());
+        };
+        const double hLin = h3 (true), hExp = h3 (false);
+        std::printf ("  VCA 2.5 V 1 kHz: H3 %.1f dBc at unity (LIN 5 V), %.1f dBc at +6 dB (EXP 5 V)\n", hLin, hExp);
+        CHECK (hLin <= -90.0 && hExp <= -90.0,
+               "VCA linear at nominal levels: 2.5 V sine, unity and +6 dB, H3 <= -90 dBc", hLin, hExp);
+    }
+
     // click bound: unity (full-scale, 2.5 V) 1 kHz sine, CV stepped 0 -> 5 V;
     // 5-20 kHz energy in the following 50 ms <= -35 dBFS (FS = 2.5 V).
     {

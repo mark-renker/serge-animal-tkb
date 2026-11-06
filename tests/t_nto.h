@@ -443,6 +443,9 @@ inline void runT04()
         CHECK (tv <= 0.02, "VAR at minimum shape: THD <= 2% (near-pure sine)", tv);
         CHECK (ts <= 0.02, "SINE output: THD <= 2%", ts);
         CHECK (ts > 0.002, "SINE keeps a hardware-like residual (THD > 0.2%, info bound)", ts);
+        // round 3 (2026-11-06): VAR starts from the exact sine — no kinked,
+        // under-driven shaper (was 1.55 % THD, H3 -37 dBc, slow odd tail)
+        CHECK (tv <= 0.002, "VAR at minimum shape as clean as SINE (THD <= 0.2%, no kinked-shaper tail)", tv);
         Solo s3; s3.n->ctls[NTO::cFreq].v = freqKnob (f0); s3.n->ctls[NTO::cWave].v = 1.0f; s3.run (9600);
         const double tmax = thd (s3.capture (NTO::jVar, 48000), f0);
         CHECK (tmax > 0.3, "VAR at maximum shape is strongly non-sinusoidal (THD > 30%)", tmax);
