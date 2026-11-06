@@ -289,21 +289,28 @@ int main(int argc, char** argv) {
     // supplementary renders so the judged pieces are real A/B pairs.
     //
     // S1. RING with a BIPOLAR ~80 Hz modulator (T09 band patch, amended
-    //     2026-11-05 with Mark's approval): as file 8, but DSG2 out -> VCFQ
-    //     audio in -> VCFQ HP (fc 20 Hz, Q 0.5; patch-level AC coupling) ->
-    //     RING Y. VCFQ ping and its default VCM-mid feed are not used.
-    //     VCFQ input gain 0.3 (same as v2's patch: keeps the coupler linear).
+    //     2026-11-05 with Mark's approval). Round 4 (full-level modulator,
+    //     same semantics as v2's patch): DSG2 out (A, amt 1) + KEY CV (B,
+    //     amt 1; KEY freq 261.63*2^-2.5 Hz -> KEY CV = -0.5 = -2.5 V DC) ->
+    //     VCFQ audio in (input gain 1) -> VCFQ HP (fc 20 Hz, Q 0.5; strips
+    //     the DC residue) -> RING Y: a centred +-0.5 (+-2.5 V) triangle.
+    //     NTO keytrack OFF (KEY now carries the offset): 300 Hz from coarse
+    //     = 12*log2(300/261.63) semitones. Rounds 2-3 used the offset 0..1
+    //     triangle at input gain 0.3 (sidebands 10.5 dB down).
     {
+        const float offHz = (float)(261.63 * std::pow(2.0, -2.5));
+        const float coarse = (float)(12.0 * std::log2(300.0 / 261.63));
         std::vector<Ev> e = {
-            {0, "NTO/keytrack", 1}, {0, "KEY/freq", 300.f},
+            {0, "NTO/keytrack", 0}, {0, "NTO/coarse", coarse}, {0, "KEY/freq", offHz},
             {0, "SLOPES/DUSG2/cycle", 1},
             {0, "SLOPES/DUSG2/rise", 0.00625f}, {0, "SLOPES/DUSG2/fall", 0.00625f},
             {0, "PATCH/VCFQ/audio in/A src", 6}, {0, "PATCH/VCFQ/audio in/A amt", 1.f},
+            {0, "PATCH/VCFQ/audio in/B src", 27}, {0, "PATCH/VCFQ/audio in/B amt", 1.f},
             {0, "TIMBRE/VCFQ/freq", 20.f}, {0, "TIMBRE/VCFQ/Q", 0.5f},
-            {0, "TIMBRE/VCFQ/input gain", 0.3f},
+            {0, "TIMBRE/VCFQ/input gain", 1.0f},
             {0, "PATCH/RING/X in/A src", 1}, {0, "PATCH/RING/X in/A amt", 1.f},
             {0, "PATCH/RING/Y in/A src", 13}, {0, "PATCH/RING/Y in/A amt", 1.f},
-            {0, "OUT/MIX/monitor src", 17}, {0, "OUT/MIX/monitor level", 1.0f}, // 0.2x modulator: full monitor
+            {0, "OUT/MIX/monitor src", 17}, {0, "OUT/MIX/monitor level", 0.35f}, // level-matched pair (full-level modulator)
         };
         render("supplementary/ring_bipolar.wav", 5.0, e, {});
     }

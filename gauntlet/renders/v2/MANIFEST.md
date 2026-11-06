@@ -29,6 +29,19 @@ below 5 V, VCA output stage linear below 5 V). Changed files:
 level changed — every pair stays within ±1 dB RMS. New negative control
 `../control/dusg_env_rc.wav` (below).
 
+**Round 4 (2026-11-06, branch `sound-r4`).** Re-rendered after the round-4
+fixes (LOG.md "Sound bar round 4": RING default bleed −79.8 dB, VCM BOT
+rectifier on the active stage, VCM MID peak + RMS makeup and outer-fold
+reshape). Changed files: `vcm_mid_foldsweep` (monitor 0.41 → **0.48**, see
+file 3), `vcm_bot_full`, `ring_sines` (bleed only), `default_note60` (the
+default voice runs through MID), `supplementary/ring_bipolar` +
+`ring_morph_sweep` (**new band patch: full-level bipolar modulator**, monitor
+1.0 → **0.31**) and `../control/ring_bipolar_leaky` (same patch, 0.8 →
+**0.30**); its v1 counterpart `../v1/supplementary/ring_bipolar.wav` was
+re-rendered with the identical patch semantics. Every other file is
+byte-identical; every pair within ±1 dB RMS. New negative control
+`../control/vcm_bot_single_abs.wav` (below).
+
 ## How these were made
 
 - Driver: `tools/RenderGauntlet.cpp` → CMake target **`satk_render`** (pure
@@ -92,8 +105,8 @@ H3; 0.000 % at the jack; r2 1.55 %); centroid 236, 331, 413, 450, 523, 680,
 
 NTO SINE 220 Hz → **VCA1 (LIN, LEVEL 0.8 → gain 0.8)** → **VCM MID IN 1**;
 BIAS 0.5 (centred); FOLD stepped at t = 0..7 s to k/7; **VCM MID OUT →
-monitor** (src 15), level **0.41** (r2; was 0.5 — MID now holds its level as
-it folds, +1.7 dB vs v1 at 0.5). Achieved f0 220.001 Hz.
+monitor** (src 15), level **0.48** (r4; r2/r3 0.41, r1 0.5 — MID holds its
+level as it folds; matched to v1's RMS). Achieved f0 220.001 Hz.
 *Reproduction note:* v1's feed was "NTO sin, amt 0.8"; v2 banana cables have
 no attenuator, so the 0.8 depth is the VCA (its `kSatV` soft-sat adds a
 symmetric 3rd harmonic ≈ −46 dBc at 2 V). This is the closest patch-level
@@ -109,6 +122,12 @@ max), odd:even 73.0 dB, ≈ 6 transfer reversals; THD at minimum fold 1.28 %
 at the steps: worst 4–12 kHz excess +21.8 → −0.0 dB). Centroid 240, 247, 265,
 314, 465, 888, 1289, 1993 Hz; THD at minimum fold 0.81 %; per-step RMS span
 3.4 dB; 36 odd harmonics ≥ −40 dBc re H1 (11 re max); odd:even 73.2 dB.
+**Round 4:** the makeup holds peak AND RMS (level metric peak^0.58·rms^0.42)
+and the outer folds decay 0.85 instead of 0.5: per-step peak −14.8 … −10.9
+dBFS (span **3.8 dB**; r3 −15.5 … −9.1, span 6.4), RMS span 3.8 dB (r3 3.4);
+centroid 240, 247, 267, 318, 483, 859, 1343, 2082 Hz; 25 odd harmonics
+≥ −40 dBc re H1 (13 re max); odd:even 72.0 dB; THD at minimum fold 0.86 %;
+max-fold non-harmonic −81.8 dBc (r3 −67.5); click excess −0.6 dB.
 *Re-rendered on branch `vcm-sweep-fix`* after the VCM-mid knee fix (LOG.md):
 the first render went 265, **256**, 275, 322, 451, 825, 1217, 1899 Hz (OUT).
 The patch is unchanged.
@@ -126,6 +145,13 @@ f0: strongest H10, H8 −42 dB (its table row "H1 −38.4" was the f0 bug).
 −123, −25, −119, −33, −99, **0**, −99, −35, −115, −32, −130, −51, −117, −27 dB
 and a dense even series to the top of the band; even:odd +95.6 dB; worst
 non-harmonic −102 dB re strongest over 0–20 kHz (−82 dB at 23.8 kHz).
+**Round 4** (rectifier on the active stage, exact doublers under it):
+H1..H16 re strongest −119, −63, −126, −66, −117, −34, −100, **0**, −100,
+−34, −118, −74, −120, −49, −112, **−21** dB — the lower-stage residue is gone
+(H4 −25 → −66, H12 −32 → −74), the top-stage cusp is stronger (H16 −27 →
+−21); H6/H10 −34 are the feed's H3 × the cascade's ×8 phase gain. Even:odd
++94.9 dB; non-harmonic −107.7 dB re strongest over 0–20 kHz (−80.5 dB at
+23.8 kHz, halfband transition band).
 
 ## 5. `vcfq_ping.wav` — VCFQ ping, Q ×4 (T07)
 
@@ -190,6 +216,8 @@ the 300 Hz X component is 8.1 dB *above* the sidebands (v1: 10.4 dB). The
 all); re the strongest component it is −80.4 dB (r1 −72.2). X ± 2·fY
 products −48.9 dB re strongest (r1 −32.2; at the RING jack −105 dB, the rest
 is the OUT bus soft limiter). Monitor level **0.35** (r2; r1 0.4).
+**Round 4:** default bleed −79.8 dB (r3 −78.0): Y suppression 74.1 dB,
+~80 Hz leak −82.2 dB re strongest.
 **Listening material only since round 2** — the T09 band is measured on the
 bipolar pair (`supplementary/ring_bipolar.wav`, both versions).
 
@@ -200,6 +228,9 @@ bipolar pair (`supplementary/ring_bipolar.wav`, both versions).
 (`velV = 100/127 × 5 V`), pitch 0 V, gate high 0.25 → 2.25 s, then 2.25 s
 tail. NTO free-runs at the default 261.63 Hz knob (achieved 261.609 Hz with
 drift 0.2; no KV cable in the default set, as in v1). Stereo.
+**Round 4:** peak 0.6595, RMS L 0.03436 / R 0.02597; sounding-span RMS
+0.1732 over 0.177 s (the MID folder's reshaped outer folds; makeup 1 at
+the default FOLD is unchanged).
 **Round 3:** peak 0.6552, RMS L 0.03425 / R 0.02588; sounding-span RMS
 0.1726 over 0.177 s (VAR at the default shape 0.15 is now drive 1.15, and
 VCA1 no longer soft-compresses the pluck's ~5.6 V peaks).
@@ -220,11 +251,20 @@ A/B pairs; `ring_morph_sweep` stays v2-only. Measured in MEASUREMENTS.md.
 
 | file | patch | why |
 |---|---|---|
-| `ring_bipolar.wav` | as file 8, but DUSG2 OUT → VCFQ IN (**GAIN 0.15 = 0.3×**, r2), **VCFQ HP** (FREQ 20 Hz, Q 0.5) → RING Y — the patch-level AC coupling that removes the unipolar DC; monitor level **1.0** (r2: level-matched to v1's bipolar render, +0.5 dB) | **T09 band patch** (amended 2026-11-05, Mark). GAIN 0.3×: at unity the VCFQ input soft-clip bends the offset triangle into its own −30 dBc 2nd harmonic (X ± 2·fY products that are the coupler's); at 0.3× −51 dBc. v1 uses input gain 0.3 too. r2: Y 72.3 dB, X 59.2 dB |
+| `ring_bipolar.wav` | as file 8, but **DUSG2 OUT + KEY KV (held at −2.5 V: `KEY.pitchV`) stacked into VCFQ IN** (a centred ±2.5 V triangle), VCFQ GAIN 0.5 (**1×**), **VCFQ HP** (FREQ 20 Hz, Q 0.5) → RING Y; monitor level **0.31** (r4; level-matched to v1's bipolar render, +0.12 dB) | **T09 band patch** (amended 2026-11-05, Mark). **Round 4 — full-level modulator.** r2/r3 ran the 0..5 V triangle into the coupler at GAIN 0.3× (an OFFSET swing bends in the VCFQ input stage into its own 2nd harmonic → X ± 2·fY products), which left the modulator, and so the sidebands, 10.5 dB down against RING's fixed bleed (X 59.3 dB). Stacking an exact −2.5 V DC onto the triangle first makes the coupler's swing symmetric — its curvature is then odd-only (the triangle's own odd series, no even products: X ± 2·fY −89.4 dB re strongest) — so it runs at unity, and the HP only strips the triangle's residual DC. v1 uses identical semantics (KEY CV −0.5 = −2.5 V on the VCFQ audio-in B slot, input gain 1). r4: Y 74.1 dB, X 71.8 dB (v1 110.0 / 68.1) |
 | `ring_morph_sweep.wav` | same bipolar patch, MORPH stepped k/8 at t = 0..8 s | T09 morph dry → AM → ring monotonic (v1 has no morph control) |
 | `dusg_end_duty.wav` | DUSG1 CYCLE, 20 ms period, rise/(rise+fall) = .05/.25/.50/.75/.95 for 1.5 s each; **DSG1 END → monitor** (src 5), level 0.25 | T05e END duty law (v1 counterpart since r2: its END is a fixed-width pulse, duty 0.200 at every ratio) |
 
 ## Negative controls (`../control/`)
+
+**Round 4 — `vcm_bot_single_abs.wav`** (sound-r4 packet, vcm_bot piece C):
+file 4's patch and level path (NTO SINE 220 Hz → VCA1 LIN 0.8 → BOT IN 1,
+BOT monitor tap, MASTER 0.8), but the BOT monitor pointer re-aimed at a
+degraded wave multiplier: **one plain full-wave rectifier**, `2·|x|` minus
+its sine mean, at 48 kHz with no oversampling and no anti-aliasing. One
+stage instead of three (strongest **H2**, H4 −14 dB) and its cusp series
+folds freely (non-harmonic −75.0 dB re strongest over 0–20 kHz; v2 −107.7).
+Monitor 0.59 → RMS 0.12868 (pair 0.12746 / 0.13042, +0.08 dB).
 
 **Round 3 — `dusg_env_rc.wav`** (sound-r3 packet, dusg_env piece C): file
 7's patch and level path (NTO SINE 1 kHz → VCA2 LIN, LEVEL 0 → OUT IN 2,
@@ -243,6 +283,8 @@ monitor pointer re-aimed at a degraded "ring": the bare product X·Y of the
 same NTO SINE / VCFQ HP jack values plus **−20 dB of each input leaking
 straight through** (an untrimmed, unbalanced modulator). Y suppression 14.4
 dB, X 0.9 dB — far outside 55–85 dB; v1 116.9 / 71.1, v2 72.3 / 59.2.
+Round 4: re-rendered with the new full-level band patch (monitor 0.30,
+pair ±0.1 dB): Y 14.4, X 11.3 dB.
 
 **Round 1 — `nto_saw_1975_naive_zoh12k.wav`:**
 
@@ -259,19 +301,20 @@ to be unambiguously worst: −12.7 dBc in-band, −12.4 dBc full-band.
 |---|---|---|---|---|---|---|---|
 | nto_saw_1975.wav | 5.00 | 0.2725 | 0.12361 | 0.12776 | −0.29 dB | 0.5 / 0.8 | 0 |
 | nto_shape_sweep.wav | 8.00 | 0.1871 | 0.14169 | 0.14072 | +0.06 dB | 0.375 / 0.8 | 0 |
-| vcm_mid_foldsweep.wav | 8.00 | 0.3535 | 0.14601 | 0.14718 | −0.07 dB | 0.41 / 0.8 | 0 |
-| vcm_bot_full.wav | 5.00 | 0.2203 | 0.13028 | 0.12746 | +0.19 dB | 0.52 / 0.8 | 0 |
+| vcm_mid_foldsweep.wav | 8.00 | 0.2892 | 0.14670 | 0.14718 | −0.03 dB | 0.48 / 0.8 | 0 |
+| vcm_bot_full.wav | 5.00 | 0.2236 | 0.13042 | 0.12746 | +0.20 dB | 0.52 / 0.8 | 0 |
 | vcfq_ping.wav | 8.00 | 0.1148 | 0.00621 | 0.00568 | +0.77 dB | 0.15 / 0.8 | 0 |
 | dusg_cycle.wav | 5.00 | 0.2043 | 0.06509 | 0.06320 | +0.26 dB | 0.25 / 0.8 | 0 |
 | dusg_env_shape.wav | 6.50 | 0.2222 | 0.07649 | 0.07633 | +0.02 dB | (IN 2 path) / 0.4 | 0 |
 | dusg_env_shape_monitor_direct.wav | 6.50 | 0.0072 | 0.00413 | 0.00110 | +11.5 dB (both near-silent) | 0.25 / 0.8 | 0 |
 | ring_sines.wav | 5.00 | 0.2881 | 0.12671 | 0.12613 | +0.04 dB | 0.35 / 0.8 | 0 |
-| default_note60.wav | 4.50 | 0.6552 | 0.03425 | 0.03631 | −0.51 dB | defaults (0.53) | 0.2 |
-| supplementary/ring_bipolar.wav | 5.00 | 0.1271 | 0.05170 | 0.04913 | +0.44 dB | 1.0 / 0.8 | 0 |
+| default_note60.wav | 4.50 | 0.6595 | 0.03436 | 0.03631 | −0.48 dB | defaults (0.53) | 0.2 |
+| supplementary/ring_bipolar.wav | 5.00 | 0.1558 | 0.05270 | 0.05198 | +0.12 dB | 0.31 / 0.8 | 0 |
 | supplementary/dusg_end_duty.wav | 7.50 | 0.2203 | 0.08359 | 0.07908 | +0.48 dB | 0.25 / 0.8 | 0 |
-| control/ring_bipolar_leaky.wav | 5.00 | 0.1335 | 0.04884 | 0.04913 | −0.05 dB | 0.8 / 0.8 | 0 |
+| control/ring_bipolar_leaky.wav | 5.00 | 0.1310 | 0.05236 | 0.05198 | +0.06 dB | 0.30 / 0.8 | 0 |
 | control/dusg_env_rc.wav | 6.50 | 0.2203 | 0.07212 | 0.07633 | −0.49 dB | (IN 2 path) / 0.4 | 0 |
+| control/vcm_bot_single_abs.wav | 5.00 | 0.2638 | 0.12868 | 0.12746 | +0.08 dB | 0.59 / 0.8 | 0 |
 
-(Round 3 values. Rows unchanged since round 2 are byte-identical files.)
+(Round 4 values. Rows unchanged since round 2/3 are byte-identical files.)
 
 No NaN/Inf in any render (checked at write time).

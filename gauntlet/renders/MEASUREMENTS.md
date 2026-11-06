@@ -25,7 +25,15 @@ tuning), VCA linear-below-5 V output stage (envelope bend + carrier H3); new
 rows (T05d on the cycle ramps, click, carrier H3, VAR minimum THD), the ping
 ring-frequency window moved past the pulse, and a new negative control
 (`control/dusg_env_rc.wav`). Gauntlet 225/226 (the one failure is the known
-preset-4 level, not in scope). The table is the tool's output verbatim.
+preset-4 level, not in scope). **Re-generated 2026-11-06 on branch
+`sound-r4`** (round-4 fixes for the sound-r3 blind critic, LOG.md "Sound
+bar round 4"): RING default bleed −78.0 → −79.8 dB and a full-level
+bipolar T09 band patch for both versions (DC offset + unity HP instead of a
+0.3× HP), VCM BOT rectifier on the active stage (no lower-stage residue,
+stronger cusp), VCM MID peak + RMS held across the fold sweep; new info rows
+(MID peak per step, BOT 0–20 kHz non-harmonic) and a new negative control
+(`control/vcm_bot_single_abs.wav`). Gauntlet 232/232. The table is the
+tool's output verbatim.
 
 **T09 band amendment (2026-11-05, approved by Mark):** the ring suppression
 band is measured on the **bipolar (AC-coupled) modulator** render
@@ -57,8 +65,8 @@ patch stays as listening material only (`ring_unipolar` rows, informational).
 | nto_shape | T04 centroid (extra) | per 1 s step, window 0.2–0.95 s, harmonics 1..100 at the refined f0, amplitude-weighted centroid (t_vcm_ring::centroid) |
 | vcm_mid_fold | T08 odd count / odd:even / centroid | same per-step harmonic bank; step 8 (FOLD max) for count (≥ −40 dB re H1 AND re strongest, as the gate test) and odd:even energy |
 | vcm_mid_fold | T08 transfer folding (proxy) | the gate's static DC-ramp cannot be run on a file; instead waveform extrema per period at max fold (slopeReversals, 2 % hysteresis): a sine through a curve with r reversals shows 2 + 2r extrema per period → r |
-| vcm_mid_fold | min-fold THD, per-step RMS (info) | step 1 harmonic bank: sqrt(ΣH2..H40²)/H1; RMS of each step window in dBFS and its max−min span |
-| vcm_bot | T08 even dominance | steady state 1.0–4.5 s; f0 = strongest interpolated peak among H1..H16 of 220 Hz ÷ its order (round-2 fix); harmonics 1..100, even:odd energy; info: H1..H16 re strongest, strongest order, worst non-harmonic re the strongest harmonic |
+| vcm_mid_fold | min-fold THD, per-step RMS / peak (info) | step 1 harmonic bank: sqrt(ΣH2..H40²)/H1; RMS and peak (round 4) of each step window (k + 0.2 … k + 0.95 s) in dBFS and their max−min spans |
+| vcm_bot | T08 even dominance | steady state 1.0–4.5 s; f0 = strongest interpolated peak among H1..H16 of 220 Hz ÷ its order (round-2 fix); harmonics 1..100, even:odd energy; info: H1..H16 re strongest, strongest order, worst non-harmonic re the strongest harmonic over 0–24 kHz and (round 4) 0–20 kHz |
 | vcfq_ping | T07 decay vs Q | per 2 s Q step, each ping = first sample > 10 % of the step peak + 0.45 s window, `decayTime` (peak → −40 dB), median of the step's pings; info ring frequency = zero crossings of the first Q 35 ping **5–45 ms after the onset** (round 3; r1/r2 started at the pulse, inside its forced part) |
 | dusg_cycle | T05c (info) | fraction of rising samples of the MAIN OUT over 1–5 s (rise = fall dialed → 0.50): slope symmetry, not END |
 | dusg_cycle | T05d (round 3) | every ramp between consecutive turning points of the 200 Hz triangle (1–5 s, ~1600 ramps): least-squares line through the points in 10–90 % of that ramp's swing, max deviation in % of the swing; worst rise / worst fall (the same line fit as `dusg_env`; the bus's 10 Hz DC blocker bends both versions identically) |
@@ -66,7 +74,7 @@ patch stays as listening material only (`ring_unipolar` rows, informational).
 | dusg_env | T05d linearity | carrier envelope = max \|x\| per 1 ms block; each of 3 transients: least-squares line through the 10–90 % FS points of the rise, max deviation in % FS (the gate's "mid 80 %"); info (round 3): carrier H3 re H1 over the 50 ms up to each rise peak (harmonic bank at 1 kHz), worst of 3 |
 | vcm_mid_fold | click (info, round 3) | 4–12 kHz energy in 512-sample Hann windows around each 1 s FOLD step (max over ±256-sample offsets) vs the same band 0.3 s before/after; worst excess over the 7 steps (`t_vcm_ring::stepExcessDb`, same code as the new gate check) |
 | nto_shape | T04 (info, round 3) | THD H2..H40 of step 1 (minimum shape) from the same harmonic bank |
-| ring | T09 suppression | `supplementary/ring_bipolar.wav` (both versions; amended band patch): 131072-sample BH spectrum from 0.5 s; modulator f from the lower-sideband peak; weaker sideband vs the Y (~80 Hz) component and vs the X (300 Hz) component; info: Y leak and X ± 2·fY products re the strongest component 30 Hz–2 kHz |
+| ring | T09 suppression | `supplementary/ring_bipolar.wav` (both versions; amended band patch; round 4: full-level ±2.5 V modulator, see v2/MANIFEST.md): 131072-sample BH spectrum from 0.5 s; modulator f from the lower-sideband peak; weaker sideband vs the Y (~80 Hz) component and vs the X (300 Hz) component; info: Y leak and X ± 2·fY products re the strongest component 30 Hz–2 kHz |
 | ring_unipolar | info only | same analysis on the unipolar `ring_sines.wav` (listening material) |
 | default_voice | info | RMS over the sounding span (first..last |x| > 1 % of the file peak), peak, tail peak 3.0–4.5 s |
 | supplementary | T09 morph | per-step BH spectra (X vs sidebands); v2 only (v1 has no morph) |
@@ -79,13 +87,16 @@ Spectrograms (`spectrograms/{v1,v2,control}/`, plus `{v1,v2}/supplementary/`):
 ## Table (v1 | v2 | negative control)
 
 IN/OUT = the pre-registered band; `—` = informational row (no band, or the
-band is specified under different conditions). Three negative controls exist:
+band is specified under different conditions). Four negative controls exist:
 `nto_saw` C = round-1 control (`control/nto_saw_1975_naive_zoh12k.wav`),
 `ring` C = round-2 control (`control/ring_bipolar_leaky.wav`: bare X·Y with
 −20 dB of both inputs leaking through, ~20 dB carrier rejection),
 `dusg_env` C = round-3 control (`control/dusg_env_rc.wav`: the same VCA
 audition patch with the slope generator replaced by an RC capacitor-charge
 envelope — exponential rise/fall instead of linear slopes).
+`vcm_bot` C = round-4 control (`control/vcm_bot_single_abs.wav`: the same
+BOT audition patch, the BOT monitor tap re-aimed at ONE plain full-wave
+rectifier `2·|x|` at 48 kHz — no cascade, no oversampling, no anti-aliasing).
 
 | piece | gate | quantity | band | v1 | v1 | v2 | v2 | control | control |
 |---|---|---|---|---|---|---|---|---|---|
@@ -94,18 +105,20 @@ envelope — exponential rise/fall instead of linear slopes).
 | nto_saw | info | f0 (BH-FFT peak, interpolated) | 1975 Hz | 1974.998 Hz | — | 1974.998 Hz | — | 1974.999 Hz | — |
 | nto_shape | T04 (extra) | harmonic centroid per shape step 1..8 (Hz) | strictly increasing | 223, 331, 460, 521, 472, 388, 341, 321 | **OUT** | 236, 331, 413, 450, 523, 680, 986, 1794 | IN | | |
 | nto_shape | T04 (info) | THD at minimum shape (step 1, H2..H40) | ≤ 2 % | 0.36 % | — | 0.23 % | — | | |
-| vcm_mid_fold | T08 | odd harmonics ≥ −40 dBc at max fold (count) | ≥ 5 (re H1 and re max) | 15 re H1 / 8 re max | IN | 36 re H1 / 11 re max | IN | | |
-| vcm_mid_fold | T08 | odd:even energy at max fold | ≥ 12 dB | 71.7 dB | IN | 73.2 dB | IN | | |
-| vcm_mid_fold | T08 | harmonic centroid per fold step 1..8 (Hz) | strictly increasing | 229, 239, 262, 321, 502, 689, 1154, 1646 | IN | 240, 247, 265, 314, 465, 888, 1289, 1993 | IN | | |
-| vcm_mid_fold | T08 (proxy) | transfer slope reversals at max fold (from waveform extrema) | ≥ 2 | 6.0 | IN | 6.0 | IN | | |
-| vcm_mid_fold | info | worst non-harmonic at max fold, 220 Hz (T08's AA band is specified at 1 kHz) | (−50 dBc @ 1 kHz) | -86.3 dBc | — | -67.5 dBc | — | | |
-| vcm_mid_fold | info | THD at minimum fold (step 1, H2..H40) | — | 1.82 % | — | 0.81 % | — | | |
-| vcm_mid_fold | info | RMS per fold step 1..8 (dBFS) | — | -20.6, -17.7, -15.5, -14.8, -17.0, -15.6, -17.1, -16.8 (span 5.8 dB) | — | -18.4, -18.2, -17.5, -16.0, -15.0, -16.2, -15.9, -17.6 (span 3.4 dB) | — | | |
-| vcm_mid_fold | info | click at the FOLD steps: worst 4–12 kHz excess over steady state (7 steps) | — | +0.3 dB | — | -0.0 dB | — | | |
-| vcm_bot | T08 | even:odd energy at full depth (steady state 1.0–4.5 s) | ≥ +12 dB | -85.3 dB | **OUT** | +95.6 dB | IN | | |
-| vcm_bot | info | H1..H16 dB re strongest | — | -10, -122, -7, -101, -4, -120, -2, -105, -6, -97, -10, -97, -2, -94, -19, -89 | — | -123, -67, -123, -25, -119, -33, -99, 0, -99, -35, -115, -32, -130, -51, -117, -27 | — | | |
-| vcm_bot | info | strongest harmonic | H8 (3 octave stages) | H17 | — | H8 | — | | |
-| vcm_bot | info | worst non-harmonic re strongest harmonic, 0–24 kHz | — | -36.2 dB @ 18300 Hz | — | -82.1 dB @ 23800 Hz | — | | |
+| vcm_mid_fold | T08 | odd harmonics ≥ −40 dBc at max fold (count) | ≥ 5 (re H1 and re max) | 15 re H1 / 8 re max | IN | 25 re H1 / 13 re max | IN | | |
+| vcm_mid_fold | T08 | odd:even energy at max fold | ≥ 12 dB | 71.7 dB | IN | 72.0 dB | IN | | |
+| vcm_mid_fold | T08 | harmonic centroid per fold step 1..8 (Hz) | strictly increasing | 229, 239, 262, 321, 502, 689, 1154, 1646 | IN | 240, 247, 267, 318, 483, 859, 1343, 2082 | IN | | |
+| vcm_mid_fold | T08 (proxy) | transfer slope reversals at max fold (from waveform extrema) | ≥ 2 | 6.0 | IN | 8.0 | IN | | |
+| vcm_mid_fold | info | worst non-harmonic at max fold, 220 Hz (T08's AA band is specified at 1 kHz) | (−50 dBc @ 1 kHz) | -86.3 dBc | — | -81.8 dBc | — | | |
+| vcm_mid_fold | info | THD at minimum fold (step 1, H2..H40) | — | 1.82 % | — | 0.86 % | — | | |
+| vcm_mid_fold | info | RMS per fold step 1..8 (dBFS) | — | -20.6, -17.7, -15.5, -14.8, -17.0, -15.6, -17.1, -16.8 (span 5.8 dB) | — | -17.7, -17.3, -16.1, -14.9, -15.7, -16.7, -17.5, -18.7 (span 3.8 dB) | — | | |
+| vcm_mid_fold | info | peak per fold step 1..8 (dBFS; round 4) | — | -17.7, -15.0, -13.2, -12.3, -12.5, -12.6, -12.9, -13.0 (span 5.4 dB) | — | -14.8, -14.5, -13.7, -13.0, -11.9, -12.0, -11.2, -10.9 (span 3.8 dB) | — | | |
+| vcm_mid_fold | info | click at the FOLD steps: worst 4–12 kHz excess over steady state (7 steps) | — | +0.3 dB | — | -0.6 dB | — | | |
+| vcm_bot | T08 | even:odd energy at full depth (steady state 1.0–4.5 s) | ≥ +12 dB | -85.3 dB | **OUT** | +94.9 dB | IN | +93.0 dB | IN |
+| vcm_bot | info | H1..H16 dB re strongest | — | -10, -122, -7, -101, -4, -120, -2, -105, -6, -97, -10, -97, -2, -94, -19, -89 | — | -119, -63, -126, -66, -117, -34, -100, 0, -100, -34, -118, -74, -120, -49, -112, -21 | — | -97, 0, -96, -14, -105, -22, -106, -27, -111, -31, -110, -34, -114, -37, -112, -39 | — |
+| vcm_bot | info | strongest harmonic | H8 (3 octave stages) | H17 | — | H8 | — | H2 | — |
+| vcm_bot | info | worst non-harmonic re strongest harmonic, 0–24 kHz | — | -36.2 dB @ 18300 Hz | — | -80.5 dB @ 23800 Hz | — | -72.5 dB @ 23800 Hz | — |
+| vcm_bot | info | worst non-harmonic re strongest harmonic, 0–20 kHz (round 4) | — | -36.2 dB @ 18300 Hz | — | -107.7 dB @ 19000 Hz | — | -75.0 dB @ 19840 Hz | — |
 | vcfq_ping | T07 | ping decay peak→−40 dB, median per Q step (Q 2/6/15/35) | strictly increasing | 3.8, 10.7, 27.5, 64.4 ms | IN | 4.0, 10.8, 27.5, 64.4 ms | IN | | |
 | vcfq_ping | info | mean ping peak per Q step (FS) | — | 0.107, 0.110, 0.111, 0.112 | — | 0.060, 0.089, 0.107, 0.114 | — | | |
 | vcfq_ping | info | ring frequency, first Q=35 ping (zero crossings, 5–45 ms after onset) | fc = 800 Hz | 799.8 Hz | — | 799.9 Hz | — | | |
@@ -118,44 +131,74 @@ envelope — exponential rise/fall instead of linear slopes).
 | dusg_env | T05a (info) | rise / fall time (10–90 % ÷ 0.8), dialed 0.5 / 1.0 s | ±10 % | 0.497 s / 0.996 s | — | 0.494 s / 0.989 s | — | 0.282 s / 0.599 s | — |
 | dusg_env | info | 1 kHz carrier H3 re H1, 50 ms up to each rise peak (worst of 3) | — | -49.6 dBc | — | -43.8 dBc | — | -43.6 dBc | — |
 | dusg_env_direct | info | slow envelope straight through the monitor bus | — | peak 0.0019, rms 0.00110 | — | peak 0.0072, rms 0.00414 | — | | |
-| ring | T09 | suppression of Y (modulator, ~80 Hz) re weaker sideband (bipolar modulator) | 55–85 dB | 116.9 dB | **OUT** | 72.3 dB | IN | 14.4 dB | **OUT** |
-| ring | T09 | suppression of X (300 Hz sine) re weaker sideband (bipolar modulator) | 55–85 dB | 71.1 dB | IN | 59.3 dB | IN | 0.9 dB | **OUT** |
+| ring | T09 | suppression of Y (modulator, ~80 Hz) re weaker sideband (bipolar modulator) | 55–85 dB | 110.0 dB | **OUT** | 74.1 dB | IN | 14.4 dB | **OUT** |
+| ring | T09 | suppression of X (300 Hz sine) re weaker sideband (bipolar modulator) | 55–85 dB | 68.1 dB | IN | 71.8 dB | IN | 11.3 dB | **OUT** |
 | ring | info | modulator frequency (from sideband spacing) | ~80 Hz | 79.9 Hz | — | 79.9 Hz | — | 79.9 Hz | — |
-| ring | info | modulator (~80 Hz) leak re strongest component | — | -117.0 dB | — | -72.5 dB | — | -14.5 dB | — |
-| ring | info | X ± 2·fY products (≈140 / 460 Hz) re strongest | — | -40.1 / -39.6 dB | — | -50.8 / -50.5 dB | — | -48.1 / -47.7 dB | — |
-| ring_unipolar | info | Y suppression re weaker sideband (unipolar 0..5 V modulator: AM by construction) | (listening only) | 111.6 dB | — | 72.3 dB | — | | |
+| ring | info | modulator (~80 Hz) leak re strongest component | — | -110.1 dB | — | -74.3 dB | — | -14.5 dB | — |
+| ring | info | X ± 2·fY products (≈140 / 460 Hz) re strongest | — | -65.8 / -70.8 dB | — | -89.4 / -93.8 dB | — | -65.6 / -65.1 dB | — |
+| ring_unipolar | info | Y suppression re weaker sideband (unipolar 0..5 V modulator: AM by construction) | (listening only) | 111.6 dB | — | 74.1 dB | — | | |
 | ring_unipolar | info | X suppression re weaker sideband (unipolar modulator) | (listening only) | -10.4 dB | — | -8.1 dB | — | | |
 | ring_unipolar | info | modulator frequency | ~80 Hz | 79.9 Hz | — | 79.9 Hz | — | | |
-| ring_unipolar | info | modulator (~80 Hz) leak re strongest component | — | -122.0 dB | — | -80.4 dB | — | | |
+| ring_unipolar | info | modulator (~80 Hz) leak re strongest component | — | -122.0 dB | — | -82.2 dB | — | | |
 | ring_unipolar | info | X ± 2·fY products (≈140 / 460 Hz) re strongest | — | -23.1 / -22.5 dB | — | -48.9 / -48.6 dB | — | | |
-| default_voice | info | RMS over the sounding span (|x| > 1 % of peak), L | — | 0.1548 over 0.247 s | — | 0.1726 over 0.177 s | — | | |
-| default_voice | info | peak (L) | — | 0.4066 | — | 0.6552 | — | | |
+| default_voice | info | RMS over the sounding span (|x| > 1 % of peak), L | — | 0.1548 over 0.247 s | — | 0.1732 over 0.177 s | — | | |
+| default_voice | info | peak (L) | — | 0.4066 | — | 0.6595 | — | | |
 | default_voice | info | peak 3.0–4.5 s (tail) | — | 0.00000 | — | 0.00000 | — | | |
 
 | file (v2 only) | gate | quantity | band | v2 | v2 |
 |---|---|---|---|---|---|
-| ring_morph_sweep.wav | T09 | morph 9 steps: X falls, sidebands rise | strictly monotonic | X -8, -10, -13, -19, -86 / SB -125, -33, -26, -23, -20 dBFS (steps 0,2,4,6,8) | IN |
+| ring_morph_sweep.wav | T09 | morph 9 steps: X falls, sidebands rise | strictly monotonic | X -17, -20, -23, -29, -99 / SB -128, -32, -26, -22, -20 dBFS (steps 0,2,4,6,8) | IN |
 
 ## Findings
 
-**Pre-registered bands — scorecard (round 3; v2 IN everywhere):**
+**Pre-registered bands — scorecard (round 4; v2 IN everywhere):**
 
 | band | v1 | v2 | discriminates? |
 |---|---|---|---|
 | T03 NTO alias floor 0–6 kHz ≤ −60 dBc | OUT (−26.5) | IN (−78.6) | yes |
 | T03 NTO alias floor 0–24 kHz ≤ −30 dBc | OUT (−21.7) | IN (−52.8) | yes |
 | T04 (extra) NTO shape centroid rising | OUT | IN | yes |
-| T08 MID ≥ 5 odd harmonics ≥ −40 dBc | IN (15 / 8) | IN (32 / 13) | no — v1's ideal sin() folder also passes |
-| T08 MID odd:even ≥ 12 dB | IN (71.7) | IN (73.0) | no |
-| T08 MID centroid strictly rising over 8 fold steps | IN | IN (241 → 1995 Hz) | no |
-| T08 MID transfer folds ≥ 2 (proxy) | IN (6.0) | IN (6.0) | no |
-| T08 BOT even:odd ≥ +12 dB | OUT (−85.3) | IN (+95.0) | yes |
+| T08 MID ≥ 5 odd harmonics ≥ −40 dBc | IN (15 / 8) | IN (25 / 13) | no — v1's ideal sin() folder also passes |
+| T08 MID odd:even ≥ 12 dB | IN (71.7) | IN (72.0) | no |
+| T08 MID centroid strictly rising over 8 fold steps | IN | IN (240 → 2082 Hz) | no |
+| T08 MID transfer folds ≥ 2 (proxy) | IN (6.0) | IN (8.0) | no |
+| T08 BOT even:odd ≥ +12 dB | OUT (−85.3) | IN (+94.9) | yes (the r4 single-abs control is IN too, +93.0: it is caught by its H2-dominant spectrum and −75 dB alias floor, not by this band) |
 | T07 ping decay monotonic in Q | IN | IN | no |
 | T05d mid-80 % rise ≤ 3 % FS (dusg_env) | IN (0.28 %) | IN (0.31 %; r2 0.86 %) | no (the RC control is OUT, 15.7 %) |
 | T05d cycle ramps ≤ 3 % FS (dusg_cycle, new r3) | OUT (3.18 %) | IN (0.84 %) | **yes** |
 | T05e END duty tracks rise/(rise+fall) (now on END) | OUT (0.200 at every ratio: v1's END is a pulse) | IN (worst err 0.000) | **yes** (new pair) |
-| T09 Y suppression 55–85 dB (bipolar pair) | OUT (116.9, above band) | IN (72.3) | yes (upper "bleed is a feature" edge) |
-| T09 X suppression 55–85 dB (bipolar pair) | IN (71.1) | IN (59.2) | no |
+| T09 Y suppression 55–85 dB (bipolar pair) | OUT (110.0, above band) | IN (74.1) | yes (upper "bleed is a feature" edge) |
+| T09 X suppression 55–85 dB (bipolar pair) | IN (68.1) | IN (71.8; r3 59.3) | no (v2 now ≥ v1) |
+
+**Round-4 changes visible in the table (r3 → r4; LOG.md "Sound bar round 4"):**
+- RING (finding 1): both halves. (a) The band patch: rounds 2–3 fed the
+  0..5 V triangle into the VCFQ coupler at 0.3× (an offset swing bends in
+  the coupler's input stage), so the modulator — and the sidebands — sat
+  10.5 dB down against RING's fixed bleed. Round 4 stacks a −2.5 V DC (KEY
+  KV / v1 KEY CV) onto the triangle so the coupler sees a symmetric swing,
+  and runs its HP at unity: a full-level ±2.5 V bipolar modulator, identical
+  semantics in v1 and v2. (b) Default bleed −78.0 → −79.8 dB (trim 0 −102,
+  max −44.7). Bipolar X suppression: v1 71.1 → 68.1 dB (its own floor with
+  a full-level modulator), v2 59.3 → **71.8 dB**; Y: v1 116.9 → 110.0, v2
+  72.3 → 74.1 dB. The X figure is re the WEAKER SIDEBAND, which carries
+  (8/π²)/2 of X for a triangle modulator through the HP (−8.4 dB): 79.8 −
+  8.4 = 71.4 is the ceiling for an in-band (≤ −80 dB re input) default
+  bleed — the documented "80 dB carrier rejection" is the bleed re the
+  input. X ± 2·fY products −50.8 → −89.4 dB (the centred coupler makes no
+  even products).
+- VCM BOT (finding 2): rectifier on the active (last) stage, exact doublers
+  under it. H4 −25 → −66, H12 −32 → −74, H16 −27 → **−21** (the T08
+  cascade gate keeps the next harmonic ≥ 20 dB under the octave; a bare
+  |y| would put it at −14), H14 −51 → −49; H6/H10 stay at −34 (the feed's
+  H3 — NTO SINE + VCA — times the cascade's ×8 phase gain; an ideal sine
+  gives ≤ −300). Ideal sine full depth: H16 −20.8, H24 −28.2, H32 −33.3,
+  H48 −40.7, H64 −46.0, H96 −53.8 dB. Non-harmonic 0–20 kHz −102.1 →
+  −107.7 dB re strongest; full band −82.1 → −80.5 dB @ 23.8 kHz (halfband
+  transition band, above 20 kHz).
+- VCM MID (finding 3): peak per step −15.5 … −9.1 dBFS (span **6.4 dB**) →
+  −14.8 … −10.9 (span **3.8**); RMS span 3.4 → 3.8 dB (both ±1.9 dB).
+  Max-fold non-harmonic at 220 Hz −67.5 → −81.8 dBc; the 997 Hz T08 gate
+  test −56.9 → −68.9 dBc. Monitor level 0.41 → 0.48 (pair −0.03 dB).
 
 **Round-3 changes visible in the table (v2, r2 → r3; LOG.md "Sound bar round 3"):**
 - VCM BOT (finding 1): the stages are now square-law / pre-warped
@@ -215,7 +258,7 @@ envelope — exponential rise/fall instead of linear slopes).
 **Bands that do not discriminate (v1 lands IN):** T08 MID odd count, odd:even,
 centroid sweep and transfer folding; T07 ping law; T05d linearity on the
 slow envelope (the cycle-ramp T05d row does discriminate); T09 X
-suppression on the bipolar pair. v1's ideal `sin()` folder, linear ramps, SVF
+suppression on the bipolar pair (since round 4 v2 is ahead: 71.8 vs 68.1). v1's ideal `sin()` folder, linear ramps, SVF
 ping and ideal multiplier already satisfy them; the critic is the tiebreaker
 on those dimensions.
 
@@ -230,7 +273,7 @@ on those dimensions.
 
 **Level matching**: all pairs within ±1 dB RMS (`v2/MANIFEST.md`), except the
 near-silent `_monitor_direct` evidence pair and default_voice (each version's
-untouched default; sounding-span RMS v2 0.1726 vs v1 0.1548, +0.9 dB; peak
-0.655 vs 0.407 — v2's pluck is shorter and has a higher crest factor; r2 was
+untouched default; sounding-span RMS v2 0.1732 vs v1 0.1548, +1.0 dB; peak
+0.660 vs 0.407 (r4; r3 0.1726 / 0.655 — the MID folder reshape) — v2's pluck is shorter and has a higher crest factor; r2 was
 0.1616 / 0.582: the round-3 VCA output stage no longer soft-compresses the
 pluck's peaks, which reach ~5.6 V at the VCA).

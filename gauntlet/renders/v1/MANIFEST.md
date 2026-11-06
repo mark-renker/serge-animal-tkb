@@ -276,5 +276,10 @@ counterparts of v2's supplementary renders, making them A/B pairs:
 
 | file | patch (v1 terms) | why |
 |---|---|---|
-| `ring_bipolar.wav` | as file 8, but `PATCH/VCFQ/audio in` A = DSG2 out (src 6, amt 1), VCFQ freq 20 Hz, Q 0.5, **input gain 0.3**; `PATCH/RING/Y in` A = **VCFQ HP** (src 13, amt 1); monitor RING, **level 1.0** (level-matched to v2's bipolar render, −0.4 dB) | T09 suppression band patch (amended 2026-11-05 with Mark's approval: bipolar, AC-coupled modulator); same coupler settings as v2 |
+| `ring_bipolar.wav` | as file 8, but **NTO keytrack off, coarse = 12·log2(300/261.63) st** (300 Hz without KEY), **KEY freq = 261.63·2^−2.5 Hz** (KEY CV = −0.5 = −2.5 V DC); `PATCH/VCFQ/audio in` A = DSG2 out (src 6, amt 1) **+ B = KEY CV (src 27, amt 1)** (a centred ±0.5 = ±2.5 V triangle), VCFQ freq 20 Hz, Q 0.5, **input gain 1**; `PATCH/RING/Y in` A = **VCFQ HP** (src 13, amt 1); monitor RING, **level 0.35** (level-matched to v2's, −0.12 dB) | T09 suppression band patch (amended 2026-11-05 with Mark's approval: bipolar, AC-coupled modulator). **Round 4 (2026-11-06): full-level modulator**, identical semantics to v2's patch (r2/r3: offset triangle at input gain 0.3, level 1.0). Y 110.0 dB, X 68.1 dB (r3 116.9 / 71.1) |
 | `dusg_end_duty.wav` | DUSG1 cycle; trig A amt 0 and VCA1 audio A amt 0 (as file 6); rise/fall = (r, 1−r) × 20 ms for r = .05/.25/.50/.75/.95, 1.5 s each; monitor **DSG1 end** (src 5), level 0.5 | T05e END duty law measured on END (v1's END is a fixed-width pulse: duty 0.200 at every ratio) |
+
+**Round 4 (2026-11-06, branch `sound-r4`):** only the `ring_bipolar.wav`
+patch changed (above; peak 0.1045, RMS 0.05198). Rebuilt from the same
+toolchain (Faust 2.85.9, `clang++ -std=c++17 -O2`); the other eleven files
+re-render byte-identically (verified with `cmp`).

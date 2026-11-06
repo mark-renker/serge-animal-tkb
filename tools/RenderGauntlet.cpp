@@ -40,8 +40,9 @@ namespace {
 using namespace satk;
 constexpr int kSR = 48000;
 constexpr uint64_t kSeed = kDefaultInstanceSeed;
+constexpr float kBotAbsMonLvl = 0.59f;  // r4 control: single naive abs, level-matched to the vcm_bot pair
 constexpr float kRingMonLvl = 0.35f;    // ring_sines, level-matched to v1 RMS (r2: 0.4 -> 0.35, linear core)
-constexpr float kRingBipMonLvl = 1.0f;  // ring_bipolar/morph, level-matched to v1's bipolar render
+constexpr float kRingBipMonLvl = 0.31f; // ring_bipolar/morph, level-matched to v1's bipolar render (r4 full-level modulator; r2/r3 1.0)
 
 struct Ev { long at; std::function<void()> fn; };
 
@@ -145,7 +146,7 @@ void renderV2()
     }
     { // 3. NTO SINE -> (VCA 0.8) -> VCM MID IN 1, BIAS centred, FOLD stepped k/7
         Job j; j.drift (0.0f); vcmFeed (j, VCM::jMidIn1);
-        j.monitor (15, 0.41f); // level-matched (r2: MID level compensation, convention 0.5 -> +1.7 dB)
+        j.monitor (15, 0.48f); // level-matched (r4 peak/RMS makeup; r2/r3 0.41, convention 0.5)
         VCM* v = j.sys.vcm;
         v->ctls[VCM::cBias].v = 0.5f;
         for (int k = 0; k < 8; ++k) j.at (k, [v, k] { v->ctls[VCM::cFold].v = (float) k / 7.0f; });
@@ -244,12 +245,19 @@ void renderV2()
     }
 }
 
-// Bipolar ~80 Hz modulator: DUSG2 triangle AC-coupled through VCFQ HP
-// (fc 20 Hz, Q 0.5) — the patch-level way to strip the unipolar DC.
-// VCFQ GAIN 0.15 (0.3x): the VCFQ input stage soft-clips, and a 0..5 V
-// offset triangle at unity gain comes out of it with its own 2nd
-// harmonic at -30 dBc (-> X ± 2·fY products that are the coupler's, not
-// the ring's); at 0.3x it is ~-51 dBc. Same setting in v1's render.
+// Bipolar ~80 Hz modulator (round 4): the DUSG2 0..5 V triangle is shifted
+// by an exact -2.5 V DC (KEY KV held at -2.5 V, i.e. a key 2.5 octaves
+// below C4: two cables stacked into VCFQ IN) so the coupler sees a
+// SYMMETRIC +-2.5 V swing, then VCFQ HP (fc 20 Hz, Q 0.5, GAIN 1x) strips
+// whatever DC residue the triangle's own mean leaves -> RING Y.
+// Full-level modulator (+-2.5 V, u = +-1). Rounds 2-3 ran the offset 0..5 V
+// triangle into the coupler at GAIN 0.3x: an offset swing bends into its
+// own 2nd harmonic (-> X +- 2fY products) unless attenuated, and the 0.3x
+// left the sidebands 10.5 dB down against RING's fixed X bleed. Centred, the
+// input stage's curvature is odd-only (a triangle's own odd series: no
+// even products), so unity gain is clean. Same semantics in v1's render
+// (KEY CV -0.5 = -2.5 V on the VCFQ audio-in B slot, input gain 1).
+constexpr float kBipOffsetV = -2.5f;
 void bipolarRing (Job& j)
 {
     j.drift (0.0f); j.ntoHz (300.0);
@@ -257,11 +265,13 @@ void bipolarRing (Job& j)
     d->ctls[DUSG::cCycle].v = 1.0f;
     d->ctls[DUSG::cRise].v = t_dusg_ssg::dial (0.00625);
     d->ctls[DUSG::cFall].v = t_dusg_ssg::dial (0.00625);
+    j.sys.key->pitchV = kBipOffsetV;                  // KEY KV = -2.5 V DC
     VCFQ* f = j.sys.vcfq;
     f->ctls[VCFQ::cFreq].v = 0.0f;                    // 20 Hz
     f->ctls[VCFQ::cQ].v = t_vcfq::qKnob (0.5);
-    f->ctls[VCFQ::cGain].v = 0.15f;                    // 0.3x (near-linear coupler)
+    f->ctls[VCFQ::cGain].v = 0.5f;                    // 1x (unity)
     j.sys.patch (d, DUSG::jOut, f, VCFQ::jIn);
+    j.sys.patch (j.sys.key, KEY::jKv, f, VCFQ::jIn);  // stacked: triangle - 2.5 V
     j.sys.patch (f, VCFQ::jHp, j.sys.ring, RING::jY);
     j.sys.patch (j.sys.nto, NTO::jSine, j.sys.ring, RING::jX);
     j.monitor (17, kRingBipMonLvl);
@@ -335,7 +345,7 @@ void renderControl()
 void renderControlRing()
 {
     Job j; bipolarRing (j);
-    j.monitor (17, 0.8f);
+    j.monitor (17, 0.30f); // level-matched to the pair (r4; r2/r3 0.8)
     static float leaky = 0.0f;
     j.sys.out->monSrc[17] = &leaky;
     const float* x = &j.sys.nto->jacks[NTO::jSine].value;
@@ -381,6 +391,30 @@ void renderControlDusgRc()
     render (j, "control/dusg_env_rc.wav", 6.5);
 }
 
+// Round-4 negative control (sound-r4 packet, vcm_bot piece): the
+// vcm_bot_full patch and level path (NTO SINE 220 Hz -> VCA1 LIN 0.8 ->
+// BOT IN 1, BOT monitor tap, MASTER 0.8), but the BOT monitor pointer
+// re-aimed at a degraded "wave multiplier": ONE plain full-wave rectifier,
+// 2·|x| minus its sine-referenced mean, computed at 48 kHz with no
+// oversampling and no anti-aliasing. One stage instead of three (the octave
+// cascade stops at H2) and its cusp series aliases freely.
+void renderControlBotAbs()
+{
+    Job j; j.drift (0.0f); vcmFeed (j, VCM::jBotIn1);
+    j.sys.vcm->ctls[VCM::cBotDepth].v = 1.0f;
+    j.monitor (16, kBotAbsMonLvl);
+    static float rect = 0.0f;
+    rect = 0.0f;
+    j.sys.out->monSrc[16] = &rect;
+    const float* x = &j.sys.vca1->jacks[VCA::jOut].value;
+    j.perSample = [x] (long)
+    {
+        constexpr float kMean = 2.0f * 2.0f * 2.0f / 3.14159265f; // 2·mean|2 V sine|
+        rect = 2.0f * std::fabs (*x) - kMean;
+    };
+    render (j, "control/vcm_bot_single_abs.wav", 5.0);
+}
+
 } // namespace
 
 int main (int argc, char** argv)
@@ -391,6 +425,7 @@ int main (int argc, char** argv)
     renderControl();
     renderControlRing();
     renderControlDusgRc();
+    renderControlBotAbs();
     std::printf ("done.\n");
     return 0;
 }

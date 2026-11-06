@@ -195,7 +195,7 @@ double transferReversals (const Buf& w, double f0)
 
 std::vector<Cell> mVcmMid (const Buf& x)
 {
-    std::vector<double> c, aMax, lvl;
+    std::vector<double> c, aMax, lvl, pkl;
     double f0max = 220.0, thd1 = 0.0;
     for (int k = 0; k < 8; ++k)
     {
@@ -204,6 +204,7 @@ std::vector<Cell> mVcmMid (const Buf& x)
         const auto a = harmonicsWin (w, f0, 100);
         c.push_back (t_vcm_ring::centroid (a, f0));
         lvl.push_back (gauntlet::db (wavio::rms (w), 1.0));
+        pkl.push_back (gauntlet::db (wavio::peak (w), 1.0));
         if (k == 0)
         {
             double s2 = 0; for (int h = 2; h <= 40; ++h) s2 += a[(size_t) h] * a[(size_t) h];
@@ -212,6 +213,7 @@ std::vector<Cell> mVcmMid (const Buf& x)
         if (k == 7) { aMax = a; f0max = f0; }
     }
     const double lvlSpan = *std::max_element (lvl.begin(), lvl.end()) - *std::min_element (lvl.begin(), lvl.end());
+    const double pkSpan = *std::max_element (pkl.begin(), pkl.end()) - *std::min_element (pkl.begin(), pkl.end());
     // round 3 (critic: clicks at every FOLD step): 4-12 kHz energy in
     // 512-sample Hann windows around each 1 s step vs the steady state
     // 0.3 s before/after (t_vcm_ring::stepExcessDb, the gate test's measure)
@@ -236,6 +238,7 @@ std::vector<Cell> mVcmMid (const Buf& x)
              info (fmt ("%.1f dBc", alias)),
              info (fmt ("%.2f %%", thd1)),
              info (list (lvl, "%.1f") + fmt (" (span %.1f dB)", lvlSpan)),
+             info (list (pkl, "%.1f") + fmt (" (span %.1f dB)", pkSpan)),
              info (fmt ("%+.1f dB", clickWorst)) };
 }
 
@@ -258,9 +261,15 @@ std::vector<Cell> mVcmBot (const Buf& x)
     // worst non-harmonic re the STRONGEST harmonic (worstNonHarmonic is re H1)
     const double reH1 = t_nto::worstNonHarmonic (m, sp.size(), f0, 24000.0, 20.0, &fi);
     const double reMax = reH1 + gauntlet::db (t_nto::peakNear (m, sp.size(), f0, 3.0), t_nto::peakNear (m, sp.size(), f0 * (double) hs, 3.0));
+    // round 4: the same re-strongest figure restricted to 0-20 kHz (the
+    // full-band worst sits in the output halfband's transition band)
+    double fi20 = 0;
+    const double reMax20 = t_nto::worstNonHarmonic (m, sp.size(), f0, 20000.0, 20.0, &fi20)
+                         + (reMax - reH1);
     return { cell (fmt ("%+.1f dB", eo), eo >= 12.0), info (list (h116, "%.0f")),
              info (fmt ("H%.0f", (double) hs)),
-             info (fmt ("%.1f dB", reMax) + fmt (" @ %.0f Hz", fi)) };
+             info (fmt ("%.1f dB", reMax) + fmt (" @ %.0f Hz", fi)),
+             info (fmt ("%.1f dB", reMax20) + fmt (" @ %.0f Hz", fi20)) };
 }
 
 std::vector<Cell> mPing (const Buf& x)
@@ -513,14 +522,16 @@ void runAll()
                { "info", "worst non-harmonic at max fold, 220 Hz (T08's AA band is specified at 1 kHz)", "(−50 dBc @ 1 kHz)" },
                { "info", "THD at minimum fold (step 1, H2..H40)", "—" },
                { "info", "RMS per fold step 1..8 (dBFS)", "—" },
+               { "info", "peak per fold step 1..8 (dBFS; round 4)", "—" },
                { "info", "click at the FOLD steps: worst 4–12 kHz excess over steady state (7 steps)", "—" } },
              mVcmMid);
     measure ("vcm_bot", "vcm_bot_full.wav",
              { { "T08", "even:odd energy at full depth (steady state 1.0–4.5 s)", "≥ +12 dB" },
                { "info", "H1..H16 dB re strongest", "—" },
                { "info", "strongest harmonic", "H8 (3 octave stages)" },
-               { "info", "worst non-harmonic re strongest harmonic, 0–24 kHz", "—" } },
-             mVcmBot);
+               { "info", "worst non-harmonic re strongest harmonic, 0–24 kHz", "—" },
+               { "info", "worst non-harmonic re strongest harmonic, 0–20 kHz (round 4)", "—" } },
+             mVcmBot, "control/vcm_bot_single_abs.wav");
     measure ("vcfq_ping", "vcfq_ping.wav",
              { { "T07", "ping decay peak→−40 dB, median per Q step (Q 2/6/15/35)", "strictly increasing" },
                { "info", "mean ping peak per Q step (FS)", "—" },

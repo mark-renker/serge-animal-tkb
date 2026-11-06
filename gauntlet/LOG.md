@@ -830,3 +830,118 @@ finding was probed at the jack (scratch tools, not committed) before and after.
   Release arm64 build). Perf: T16 stub baseline 43.5× (≥ 6×); scratch
   full-engine check (default patch + BOT/TOP/RING patched, min of 5 × 10 s,
   -O3) 33.6× vs 31.8× before (same session).
+
+## 2026-11-06 — Sound bar round 4 (final targeted round: fixes for the sound-r3 blind critic)
+
+Self-contained entry, branch `sound-r4` (from `integrate-r2` c887a59).
+Scope: the three gaps the sound-r3 critic named. Allowed files only
+(`ModulesShapers.h` internals, `tools/*`, the v1 render patch,
+`t_vcm_ring.h` regressions, renders/judge docs, this log). Every number
+below was probed at the jack (scratch tools, not committed) and in the
+renders.
+
+- **Gap 1 — RING carrier (X) rejection (v2 59.3 dB vs v1 71.1 on the
+  bipolar pair).** Root cause, two parts. (a) The band patch: rounds 2–3
+  fed DUSG2's 0..5 V triangle into the VCFQ coupler at GAIN 0.3× (the
+  offset swing bends in the input stage's soft clip → X ± 2·fY products),
+  so the modulator was ±0.75 V and the sidebands 10.5 dB down against
+  RING's FIXED bleed (bleed is re the input, the sideband scales with Y).
+  (b) The default bleed sat at −78.0 dB. Fix (a), both versions, identical
+  semantics: an exact −2.5 V DC is stacked onto the triangle before the
+  coupler (v2: KEY KV held at −2.5 V as a second cable into VCFQ IN; v1:
+  KEY CV −0.5 on the VCFQ audio-in B slot, NTO pitch moved from keytrack
+  to coarse = 12·log2(300/261.63) st), so the coupler sees a symmetric
+  ±2.5 V swing — its curvature is odd-only, the triangle's own series, no
+  even products — and runs at unity; the 20 Hz HP strips the triangle's
+  residual DC. Monitor levels re-matched (v1 0.35, v2 0.31, ±0.12 dB).
+  Fix (b), `RING::bleedLaw`: −102 + 57.3·√t dB (was 62·√t): trim 0
+  −102, default **−79.8**, max −44.7 dB (X and Y). Jack probe (patch
+  above): X 69.5 dB at −78.0 → 71.4 dB; the OUT bus limiter adds its own
+  300 Hz product only on hot levels (78 dB at monitor 1.0, > 100 dB at
+  ≤ 0.5), so the renders run at ~0.15 FS peak. Render: **v2 X 59.3 →
+  71.8 dB, Y 72.3 → 74.1; v1 X 71.1 → 68.1, Y 116.9 → 110.0** (v1's own
+  floor with a full-level modulator); X ± 2·fY −50.8 → −89.4 dB. The
+  remaining distance to "80 dB" is the reference: the band measures X re
+  the WEAKER SIDEBAND, which for a triangle modulator through the HP
+  carries (8/π²)/2 of X (−8.4 dB); an in-band default bleed (≤ −80 re the
+  input, T09 −60..−80) caps that figure at ~71.4 dB. The R*S "80 dB
+  carrier rejection" is re the input — i.e. the bleed law itself.
+- **Gap 2 — VCM BOT cusps weak, lower-stage residue.** Root cause: every
+  stage was a square-law / asin-rectifier blend (λ 0.05/0.20/0.35), so the
+  lower stages' cusps survived the later doublings as H4/H12 residue
+  (−25/−32 dB re H8), and the top stage's asin pre-warp makes a triangle
+  (H8, H24, H40 … only), leaving H16 at −26.7. Fix (`RectCascadeKernel`,
+  internals): two stage roles — exact doubler S(y) = 2y² − 1 and rectifier
+  R(y) = ½(2y² − 1) + ½(2|y| − 1) (plain precision full-wave |y|, real
+  slope jump → the full-wave 1/(4k² − 1) series) — with the curves
+  T0 = u, T1 = R(u), T2 = R(S(u)), T3 = R(S(S(u))): the stage being faded in
+  is the cascade's last stage and shows its cusp; the engaged stages under
+  it double exactly. Plain |y| is safe on the LAST stage only (its 30°/150°
+  crossings broke cascading in round 1). Same four-curve tables, ADAA2,
+  DC/level compensation, SQ out and rail limiter. λ = 0.5 because T08's
+  cascade gate keeps the next harmonic ≥ 20 dB under the octave (a bare
+  |y| gives −14 dB): ideal sine, next harmonic −20.7 dB at depth 1/3, 2/3
+  and 1. Ideal sine full depth: H16 −20.8, H24 −28.2, H32 −33.3, H48 −40.7,
+  H64 −46.0, H96 −53.8 dB; H4/H6/H10/H12/H14 ≤ −62.7 dB; alias floor
+  0–20 kHz −100.5 dB re max (gate −90); level span 0.01 dB over 13 depth
+  steps; SQ duty 0.500 … 0.520 (span 0.17). Render (r3 → r4, re H8): H4
+  −25 → −66, H12 −32 → −74, H16 −27 → **−21**, H14 −51 → −49, H6/H10
+  −33/−35 → −34/−34 (the feed's H3 — NTO SINE + VCA, −52 dBc — times the
+  cascade's ×8 phase gain; an ideal sine gives ≤ −300); even:odd +94.9
+  dB; non-harmonic **0–20 kHz −102.1 → −107.7 dB**, full band −82.1 →
+  −80.5 dB @ 23.8 kHz (above 20 kHz, the output halfband's transition
+  band).
+- **Gap 3 — VCM MID peak climbs +6.4 dB across the fold sweep.** Root
+  cause: the makeup held RMS only, and with every fold decaying 0.5 the
+  deep folds collapse toward zero between brief ±1 spikes — crest factor
+  1.7 → 9.8 dB over the FOLD range, so a level-held RMS forces a climbing
+  peak. Fix (`VCM` internals): (i) level metric for the makeup table =
+  peak^0.58 · rms^0.42 of the static curve (makeup still 1 at the default
+  FOLD, cap 2×); (ii) fold shape: first fold 0.65, every later fold 0.85,
+  spacing shrink 1.3 (was 0.5 / 0.5 / 1.15) — crest range 8.0 → 6.8 dB.
+  Scan (scratch optimiser over first/outer decay, shrink, knee and weight,
+  constrained to keep the centroid rising over any ×1.215 gain step for
+  every ideal-sine level up to gain 16): best minimax spans ≈ 3.9 dB; the
+  pick keeps that property (worst ratio 1.005). Jack: 2 V real sine (the
+  sound-bar feed) peak span 6.7 → 3.9 dB, RMS 3.5 → 3.8; 2.5 V sine peak
+  5.9 → 2.6, RMS 2.0 → 3.6 (gate 4.0). Render: peak per step −15.5 …
+  −9.1 dBFS (span **6.4**) → −14.8 … −10.9 (span **3.8**), RMS span 3.4 →
+  **3.8 dB**; centroid 240 … 2082 Hz rising; THD at min fold 0.86 %;
+  997 Hz T08 alias −56.9 → **−68.9 dBc**; max-fold 220 Hz non-harmonic
+  −67.5 → **−81.8 dBc** (no longer fills to 24 kHz). Monitor 0.41 → 0.48
+  (pair −0.03 dB).
+- **Tests** (+6 checks, none loosened; each fails on the r3 code):
+  `t_vcm_ring` MID peak held over the 8 FOLD steps (2.5 V ideal, ≤ 4 dB;
+  r3 5.9) and over the sound-bar sweep (real sine via VCA 0.8, ≤ 4 dB; r3
+  6.7); BOT active stage is a real rectifier (next octave ≥ −22 dB re the
+  dominant at 1/3, 2/3, 1; r3 −129 worst) and no lower-stage residue at full
+  depth (≤ −60 dB re H8; r3 −25.0); RING full-level bipolar triangle
+  modulator X ≥ 71.5 dB under the weaker sideband (r3 70.1) and default
+  bleed −79.5..−80 dB (r3 −78.0).
+- **Measurement** (`satk_measure`): new info rows MID peak per fold step,
+  BOT non-harmonic 0–20 kHz; BOT piece now carries the round-4 control.
+- **Side effects.** Default voice runs through MID (makeup 1 at FOLD 0.3
+  unchanged, curve reshaped): T15 note 60 rms/peak 0.0737/0.6631 →
+  **0.0739/0.6673**; render `default_note60` peak 0.6552 → 0.6595, RMS L
+  0.03425 → 0.03436. Presets (t_presets, r3 → r4, all inside 0.005–0.15):
+  Default Voice 0.0377/0.663 → 0.0378/0.667; Fold Sweep Voice 0.0544/0.576
+  → 0.0523/0.556; Filter Pings 0.0652/0.407 (same); Slope Bongos
+  0.0839/0.689 (same); Ring Fold Drone 0.1384/0.277 → 0.1361/0.306; Random
+  Melody 0.1203/0.764 → 0.1160/0.753; Wild Animal 0.1249/0.343 →
+  0.1205/0.360.
+- **Renders / packet.** Changed: v2 `vcm_mid_foldsweep`, `vcm_bot_full`,
+  `ring_sines` (bleed), `default_note60`, `supplementary/ring_bipolar` +
+  `ring_morph_sweep`, `control/ring_bipolar_leaky`, and v1
+  `supplementary/ring_bipolar` (new patch; the other eleven v1 files
+  re-render byte-identically). Deterministic (re-render `cmp`-identical).
+  New negative control `control/vcm_bot_single_abs.wav`: one plain
+  `2·|x|` at 48 kHz, no oversampling/anti-aliasing (strongest H2,
+  non-harmonic −75.0 dB 0–20 kHz). Spectrograms regenerated with the same
+  ffmpeg settings. Blind packet `judge/sound-r4/` (new A/B draws, control
+  as `vcm_bot_C`; key `judge/KEY-sound-r4.md`).
+- Gauntlet **232/232** (+6), UX 30/30. Full clean Release arm64 build: no
+  warnings in the round's files; the one remaining warning in our sources
+  is the pre-existing `tests/t_nto.h:260` unused-lambda-capture (the MSVC
+  CI fix; present on `integrate-r2`, outside this round's allowed files).
+  Perf: T16 stub baseline 41.8–44.0× (≥ 6×); VCM bare 1011–1040 cyc/smp
+  (3× bound 1656), RING 201–204 (bound 564).

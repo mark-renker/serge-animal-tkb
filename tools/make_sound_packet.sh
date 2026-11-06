@@ -8,7 +8,8 @@
 # the key to gauntlet/judge/KEY-<round>.md (OUTSIDE the packet folder).
 # PACKET.md is authored separately; its A/B/C measurement table comes from
 #   satk_measure gauntlet/renders --key gauntlet/judge/KEY-<round>.md
-# (sound-r3 used dusg_env=control/dusg_env_rc, the RC-envelope control;
+# (sound-r4 used vcm_bot=control/vcm_bot_single_abs, one naive abs() rectifier;
+# sound-r3 used dusg_env=control/dusg_env_rc, the RC-envelope control;
 # sound-r1 used nto_saw=control/nto_saw_1975_naive_zoh12k and the unipolar
 # ring_sines pair as the ring piece; since round 2 the T09 ring piece is the
 # bipolar-modulator pair, amended 2026-11-05 with Mark's approval.)
