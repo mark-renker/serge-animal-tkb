@@ -67,12 +67,20 @@ satk_common(SergeAnimalTKB)
 # ---- Gauntlet DSP suite (G2 — no JUCE) --------------------------------------
 add_executable(satk_gauntlet tests/GauntletTests.cpp)
 set_target_properties(satk_gauntlet PROPERTIES CXX_STANDARD 17)
-target_compile_options(satk_gauntlet PRIVATE -Wall -Wextra -Wpedantic)
+if(MSVC)
+  target_compile_options(satk_gauntlet PRIVATE /W4)
+else()
+  target_compile_options(satk_gauntlet PRIVATE -Wall -Wextra -Wpedantic)
+endif()
 
 # ---- Foundation perf spike (scratch target, no JUCE; results in SPEC.md §10)
 add_executable(satk_perfspike tools/PerfSpike.cpp)
 set_target_properties(satk_perfspike PROPERTIES CXX_STANDARD 17)
-target_compile_options(satk_perfspike PRIVATE -Wall -Wextra -Wpedantic)
+if(MSVC)
+  target_compile_options(satk_perfspike PRIVATE /W4)
+else()
+  target_compile_options(satk_perfspike PRIVATE -Wall -Wextra -Wpedantic)
+endif()
 
 # ---- UX suite (G2u — JUCE-linked, U01-U04) -----------------------------------
 juce_add_console_app(satk_uxtests PRODUCT_NAME "satk_uxtests")
