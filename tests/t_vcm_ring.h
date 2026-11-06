@@ -274,17 +274,25 @@ inline void testMid()
         const double thd0 = t_nto::thd (y0, f0);
         std::printf ("  MID minimum FOLD, 2.5 V sine: THD %.2f %%\n", 100.0 * thd0);
         CHECK (thd0 <= 0.015, "T08 MID minimum fold passes a 2.5 V sine nearly clean (THD <= 1.5%)", thd0, 0.015);
-        std::vector<double> lv;
+        std::vector<double> lv, pv;
         for (int k = 0; k < 8; ++k)
         {
             VcmRun r; r.fold = (float) k / 7.0f;
-            lv.push_back (db (rmsOf (vcmSine (r, VCM::jMidIn1, VCM::jMidOut, f0, kAudio, 48000)), 1.0));
+            const auto y = vcmSine (r, VCM::jMidIn1, VCM::jMidOut, f0, kAudio, 48000);
+            lv.push_back (db (rmsOf (y), 1.0));
+            pv.push_back (db (peakOf (y), 1.0));
         }
         const double span = *std::max_element (lv.begin(), lv.end()) - *std::min_element (lv.begin(), lv.end());
+        const double pspan = *std::max_element (pv.begin(), pv.end()) - *std::min_element (pv.begin(), pv.end());
         std::printf ("  MID rms vs FOLD knob (dBV):");
         for (double v : lv) std::printf (" %.1f", v);
+        std::printf ("\n  MID peak vs FOLD knob (dBV):");
+        for (double v : pv) std::printf (" %.1f", v);
         std::printf ("\n");
         CHECK (span <= 4.0, "MID level held over the 8 FOLD steps (2.5 V sine, within +-2 dB)", span, 4.0);
+        // round 4 (2026-11-06): a folder holds its PEAK too (folding stays
+        // inside the rails); the r3 RMS-only makeup let it climb 5.9 dB here
+        CHECK (pspan <= 4.0, "MID peak held over the 8 FOLD steps (2.5 V sine, within +-2 dB)", pspan, 4.0);
     }
     std::printf ("  centroid vs FOLD knob (Hz):");
     for (double c : cK) std::printf (" %.0f", c);
@@ -323,7 +331,8 @@ inline void testMid()
 // settle; centroid on the refined (zero-crossing) f0. Before the 2026-11-04
 // fix the manifest feed went 262 -> 251 -> 270 Hz: the knee onset smoothed
 // away the NTO's peak kink faster than it added harmonics of its own (LOG.md).
-inline std::vector<double> realSineFoldSweep (bool viaVca, std::vector<double>* levels = nullptr)
+inline std::vector<double> realSineFoldSweep (bool viaVca, std::vector<double>* levels = nullptr,
+                                              std::vector<double>* peaks = nullptr)
 {
     constexpr int nH = 100;
     std::vector<double> c;
@@ -355,6 +364,7 @@ inline std::vector<double> realSineFoldSweep (bool viaVca, std::vector<double>* 
         const double f0 = t_nto::zcFreq (ref);
         c.push_back (centroid (harmonics (y, f0, nH), f0));
         if (levels) levels->push_back (db (rmsOf (y), 1.0));
+        if (peaks) peaks->push_back (db (peakOf (y), 1.0));
     }
     return c;
 }
@@ -364,8 +374,8 @@ inline void testMidRealSine()
     for (int pass = 0; pass < 2; ++pass)
     {
         const bool viaVca = pass == 0;
-        std::vector<double> lv;
-        const auto c = realSineFoldSweep (viaVca, &lv);
+        std::vector<double> lv, pv;
+        const auto c = realSineFoldSweep (viaVca, &lv, &pv);
         bool mono = true;
         double worst = 1.0e9;
         for (size_t i = 1; i < c.size(); ++i) { mono &= c[i] > c[i - 1]; worst = std::min (worst, c[i] / c[i - 1]); }
@@ -377,8 +387,16 @@ inline void testMidRealSine()
         std::printf ("    rms per FOLD step (dBV):");
         for (double v : lv) std::printf (" %.1f", v);
         std::printf ("  (span %.1f dB)\n", span);
+        const double pspan = *std::max_element (pv.begin(), pv.end()) - *std::min_element (pv.begin(), pv.end());
+        std::printf ("    peak per FOLD step (dBV):");
+        for (double v : pv) std::printf (" %.1f", v);
+        std::printf ("  (span %.1f dB)\n", pspan);
         if (viaVca)
+        {
             CHECK (span <= 4.0, "MID level held over the sound-bar FOLD sweep (real sine via VCA 0.8, +-2 dB)", span, 4.0);
+            // round 4 (sound-r3 critic: the render's peak climbed +6.4 dB)
+            CHECK (pspan <= 4.0, "MID peak held over the sound-bar FOLD sweep (real sine via VCA 0.8, +-2 dB)", pspan, 4.0);
+        }
         CHECK (mono, viaVca ? "T08 MID real NTO sine via VCA 0.8: centroid rises (8 FOLD)"
                             : "T08 MID real NTO sine direct: centroid rises (8 FOLD)",
                c.front(), c.back());
@@ -580,6 +598,33 @@ inline void testBot()
         const double reMax = reH1 + db (t_nto::peakNear (m, w.size(), f0, 3.0), t_nto::peakNear (m, w.size(), 8.0 * f0, 3.0));
         std::printf ("  BOT full depth alias floor 0-20 kHz: %.1f dB re strongest\n", reMax);
         CHECK (reMax <= -90.0, "T08 BOT anti-aliasing: non-harmonic 0-20 kHz <= -90 dB re max", reMax, -90.0);
+    }
+
+    // round 4 (2026-11-06, sound-r3 critic): the stage being faded in shows
+    // a real rectifier cusp (its next even harmonic >= -22 dB re the
+    // dominant octave at depth 1/3, 2/3 and 1; r3: -129 dB worst, -26.7 at 1),
+    // and at full depth the lower stages leave no residue (H4/H6/H10/H12/H14
+    // <= -60 dB re H8; r3: H4 -25.0, H12 -33.2).
+    {
+        const float dd[3] = { 1.0f / 3.0f, 2.0f / 3.0f, 1.0f };
+        double worstCusp = 1e9;
+        std::vector<double> hFull;
+        for (int i = 0; i < 3; ++i)
+        {
+            VcmRun q; q.depth = dd[i];
+            const auto h = harmonics (vcmSine (q, VCM::jBotIn1, VCM::jBotOut, f0, kAudio, 48000), f0, 100);
+            const size_t d = (size_t) 2 << i; // 2, 4, 8
+            worstCusp = std::min (worstCusp, db (h[2 * d], h[d]));
+            if (i == 2) hFull = h;
+        }
+        double residue = -1e9;
+        for (size_t k : { 4u, 6u, 10u, 12u, 14u }) residue = std::max (residue, db (hFull[k], hFull[8]));
+        std::printf ("  BOT active-stage cusp: next octave >= %.1f dB re dominant; full-depth lower-stage residue %.1f dB re H8\n",
+                     worstCusp, residue);
+        CHECK (worstCusp >= -22.0, "T08 BOT active stage is a real rectifier (next octave >= -22 dB re dominant, 3 depths)",
+               worstCusp, -22.0);
+        CHECK (residue <= -60.0, "T08 BOT full depth: no lower-stage residue (H4/H6/H10/H12/H14 <= -60 dB re H8)",
+               residue, -60.0);
     }
 
     // level compensation: rectification must not shrink the output
@@ -792,6 +837,37 @@ inline void testRing()
         CHECK (f.back() >= -50.0 && mono,
                yside ? "T09 Y trim max >= -50 dB audible bleed, monotonic"
                      : "T09 X trim max >= -50 dB audible bleed, monotonic", f.back(), -50);
+    }
+
+    // round 4 (2026-11-06, sound-r3 critic): default bleed at the quiet end
+    // of the band (~80 dB re the input; r2/r3 -78.0 dB), so a full-level
+    // bipolar modulator (+-2.5 V 80 Hz triangle, the T09 band patch's) keeps
+    // the 300 Hz carrier >= 71.5 dB under the weaker sideband at the jack
+    // (theory: sideband = (8/pi^2)/2 of X -> 79.8 - 7.85 = 72.0 dB; r3 70.1).
+    {
+        Rig r; auto* g = r.sys.ring;
+        r.sys.prepare (SR);
+        float x = 0.0f, y = 0.0f;
+        injectSrc (g, RING::jX, &x);
+        injectSrc (g, RING::jY, &y);
+        long k = 0;
+        auto pre = [&] (int)
+        {
+            const double t = (double) k++ / SR;
+            const double ph = 80.0 * t - std::floor (80.0 * t);
+            x = (float) (kAudio * std::sin (2.0 * kPi * 300.0 * t));
+            y = (float) (kAudio * (ph < 0.5 ? 4.0 * ph - 1.0 : 3.0 - 4.0 * ph)); // +-2.5 V triangle
+        };
+        r.step (4800, pre);
+        std::vector<float> o (48000);
+        for (auto& v : o) { pre (0); r.sys.engine.tick(); v = g->jacks[RING::jOut].value; }
+        const double sb = std::min (toneOf (o, 220.0), toneOf (o, 380.0));
+        const double rejX = db (sb, toneOf (o, 300.0));
+        const double defX = db (RING::bleedLaw (0.15f), 1.0);
+        std::printf ("  RING bipolar triangle modulator: X %.1f dB under the weaker sideband (default bleed %.1f dB)\n",
+                     rejX, defX);
+        CHECK (rejX >= 71.5, "T09 full-level bipolar modulator: X >= 71.5 dB under the weaker sideband", rejX, 71.5);
+        CHECK (defX <= -79.5 && defX >= -80.0, "T09 default bleed at the quiet end of the band (-79.5..-80 dB)", defX, -80.0);
     }
 
     // morph dry -> AM -> ring: signal term falls, sidebands rise, monotonic

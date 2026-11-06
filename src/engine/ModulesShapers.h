@@ -6,14 +6,15 @@
 //   VCM MID : piecewise-linear reflector-cascade transfer (6 turnarounds,
 //             decaying + progressively denser folds, then hold) with smooth
 //             knees (triangle-kernel smoothing), the whole composite in ONE
-//             closed-form 2nd-order ADAA kernel; output level compensated
-//             across the FOLD range (makeup table).
-//   VCM BOT : three cascaded level-compensated full-wave rectifiers (each a
-//             square-law / pre-warped precision-rectifier blend: symmetric
-//             crossings so the octaves cascade, real cusps so the even series
-//             is dense), depth crossfades stage by stage (sine: H1 -> H2 ->
-//             H4 -> H8), tabulated composite ADAA1'd as one kernel; SQ out =
-//             squared-up (ADAA1 tanh, high gain) version of the cascade output.
+//             closed-form 2nd-order ADAA kernel; output level (peak and
+//             RMS) compensated across the FOLD range (makeup table).
+//   VCM BOT : three cascaded level-compensated full-wave stages: exact
+//             square-law doublers under a precision-rectifier / doubler blend
+//             as the active (last) stage — a real cusp series with no
+//             lower-stage residue; depth crossfades stage by stage (sine:
+//             H1 -> H2 -> H4 -> H8), tabulated composite ADAA2'd as one
+//             kernel; SQ out = squared-up (ADAA1 tanh, high gain) version of
+//             the cascade output.
 //   Continuous ctls: 2-pole (2 x 3 ms) smoothers — no zipper/click on steps.
 //   VCM TOP : LO = linear two-quadrant VCA, HI = VC rounded clip (ADAA1 tanh).
 //   RING    : four-quadrant multiplier X·Y with linear-then-soft input stages
@@ -42,9 +43,14 @@ namespace shapers {
 // (triangle or sine) has an intrinsic ripple in spectral centroid vs gain
 // (period 2 in folder units — the sine peak alternately dwells on a flat
 // turnaround or a steep flank) that breaks T08's monotonic sweep for VC FOLD
-// steps of 2^0.286. Decay 0.5 / shrink 1.15 keep the centroid rising over
-// any ×1.215 gain step for every ideal-sine input level up to gain 16.
-//
+// steps of 2^0.286. Round 4 (2026-11-06): the first fold drops to 0.65 and
+// every later one decays only by 0.85 (spacing shrink 1.3) — the centroid
+// still rises over any ×1.215 gain step for every ideal-sine level up to
+// gain 16 (worst ratio 1.005), but deep folds keep more swing: the crest
+// factor over the FOLD range spans 6.8 dB instead of 8.0 (r3: 0.5 at every
+// fold, shrink 1.15 — deep folds collapsed toward zero between brief ±1
+// spikes, so a level-held RMS meant a +6 dB climbing peak).
+
 // Knee history (LOG.md): 2026-11-02 box-smoothing w 0.6 (exactly linear below
 // |u| 0.4); 2026-11-04 w 1.0 (no linear zone) because the NTO SINE's peak kink
 // (an under-driven shaper, H3 -37 ... H51 -88 dBc) was cancelled by the
@@ -70,7 +76,7 @@ struct FoldKernel
     double A[5][kMaxTurns + 2] {};          // A[j][k] = P_j at b[k-1], j = 1..4
     double W = 0.6, invW2 = 1.0 / 0.36, n = 1.0;
 
-    void configure (int turns, double decay, double shrink, double width)
+    void configure (int turns, double decay, double decayOuter, double shrink, double width)
     {
         K = std::clamp (turns, 1, kMaxTurns);
         double u = 1.0, span = 2.0, amp = 1.0, sgn = 1.0;
@@ -78,7 +84,7 @@ struct FoldKernel
         for (int k = 1; k <= K; ++k)
         {
             b[k] = u; v[k] = sgn * amp;
-            sgn = -sgn; amp *= decay; u += span;
+            sgn = -sgn; amp *= (k == 1 ? decay : decayOuter); u += span;
             span = std::max (1.0, span / shrink);
         }
         for (int k = 1; k <= K; ++k) m[k] = (v[k] - v[k - 1]) / (b[k] - b[k - 1]);
@@ -129,36 +135,40 @@ private:
 };
 
 // VCM BOT composite: the whole three-stage rectifier cascade at the current
-// depth, as ONE kernel of the normalised input u (|u| <= 1), ADAA1-wrapped
+// depth, as ONE kernel of the normalised input u (|u| <= 1), ADAA2-wrapped
 // (DspUtils rule: one kernel per island).
 //
-// Each stage is a level-compensated full-wave rectifier that maps ±1 onto ±1:
-//   r_k(y) = (1 − λk)·(2y² − 1) + λk·((4/π)·asin|y| − 1)
-// The square-law half (2y² − 1) doubles a sine exactly into a centred sine
-// (round 2: T2∘T2∘T2 = T8, the octave cascade); the asin half is a precision
-// rectifier |w| behind a sine→triangle pre-warp w = (2/π)·asin y — it turns a
-// sine into a doubled TRIANGLE, i.e. a real rectifier cusp (a 1/n² series)
-// whose zero crossings sit at the symmetric 45°/135°, so the next stage can
-// double it again. (A bare 2|y| − 1 crosses at 30°/150°: the octaves stopped
-// cascading — round 1. Pure square law has no cusp at all: a smooth
-// Chebyshev-like H8 — round-2 critic.) λ grows along the cascade
-// (0.05 / 0.20 / 0.35, fitted in an offline model: ideal sine, full depth
-// → H8 dominant by ≥ 25 dB with a dense, slowly falling even series H16,
-// H24, H32 … at −27 … −56 dB out to H128; LOG.md 2026-11-06).
+// Round 4 (LOG.md 2026-11-06). Two stage roles, both mapping ±1 onto ±1:
+//   doubler   S(y) = 2y² − 1            (exact octave of a centred sine,
+//                                         symmetric 45°/135° crossings)
+//   rectifier R(y) = (1 − λ)·(2y² − 1) + λ·(2|y| − 1),  λ = 0.5
+// R is a precision full-wave rectifier |y| blended with the doubler: its
+// cusp is real (slope jump at every zero of y -> the full-wave 1/(4k²−1)
+// series at every order), and the doubler half keeps the octave dominant
+// by the T08 cascade margin (λ = 0.5: next harmonic −20.7 dB on an ideal
+// sine; a bare |y| puts the 2nd cusp harmonic at −14 dB, inside the gate's
+// 20 dB). The stage being faded in is the cascade's LAST stage, and that
+// is the one whose cusp is heard: the curves are
+//   T0 = u,  T1 = R(u),  T2 = R(S(u)),  T3 = R(S(S(u)))
+// — the engaged stages under it double exactly (a cusp there would leave
+// its own residue: r3's per-stage asin blends left H4 −25 / H12 −32 dB re
+// H8 at full depth and only −26.5 dB of H16). Ideal sine, full depth: H8,
+// then H16 −20.7, H24 −28.1, H32 −33.2, H48 −40.3, H64 −45.3 dB; H4/H12 gone.
+// (Every stage plain |y| fails differently: 2|y| − 1 crosses at 30°/150°,
+// so the octaves stop cascading — round 1.)
 //
-// Depth d crossfades stage by stage: in third k only stage k's amount a
-// moves (earlier stages full, later ones bypassed) and y_k = y + a·(r_k(y) − y)
-// is LINEAR in a, so the composite at any depth is an exact linear blend of
-// four static curves T0..T3 (depth 0, 1/3, 2/3, 1). Those are tabulated once
-// (static, shared) on a fine u grid as piecewise-linear f with the exact
-// piecewise-quadratic antiderivative F1 (consistent pair for ADAA1). Per
-// depth, the sine-referenced mean is subtracted inside the kernel (the
-// rectified wave's DC) and the sine-referenced AC rms gives the level
-// compensation gain (`comp`), both closed-form from tabulated sine moments.
+// Depth d crossfades T_k -> T_{k+1} linearly in each third, so the composite
+// at any depth is an exact linear blend of four static curves. Those are
+// tabulated once (static, shared) on a fine u grid as piecewise-linear f
+// with the exact piecewise-quadratic / cubic antiderivatives F1 / F2
+// (consistent set for ADAA2). Per depth, the sine-referenced mean is
+// subtracted inside the kernel (the rectified wave's DC) and the
+// sine-referenced AC rms gives the level compensation gain (`comp`), both
+// closed-form from tabulated sine moments.
 struct RectCascadeKernel
 {
     static constexpr int kN = 4096;           // grid intervals over u in [-1, 1]
-    static constexpr double kLam[3] = { 0.05, 0.20, 0.35 };
+    static constexpr double kRectLam = 0.5;   // rectifier share of the active stage
 
     struct Tables
     {
@@ -166,16 +176,18 @@ struct RectCascadeKernel
         double mean[4], P[4][4];              // sine moments: E[Tk], E[Tk·Tj]
     };
 
-    static double stage (double y, double lam)
+    static double doubler (double y) { return 2.0 * y * y - 1.0; }
+    static double rectifier (double y)
     {
         const double ay = std::min (1.0, std::fabs (y));
-        return (1.0 - lam) * (2.0 * y * y - 1.0) + lam * (1.2732395447351628 * std::asin (ay) - 1.0);
+        return (1.0 - kRectLam) * (2.0 * y * y - 1.0) + kRectLam * (2.0 * ay - 1.0);
     }
     static double curve (int k, double u)
     {
+        if (k == 0) return u;
         double y = u;
-        for (int s = 0; s < k; ++s) y = stage (y, kLam[s]);
-        return y;
+        for (int s = 1; s < k; ++s) y = doubler (y);
+        return rectifier (y);
     }
     static const Tables& tables()
     {
@@ -399,7 +411,7 @@ public:
         driveS.snap (ctls[cTopDrive].v, mapDrive);
         depthS.snap (ctls[cBotDepth].v, mapUnit);
 
-        foldNL.kernel.configure (kFoldTurns, kFoldDecay, kFoldShrink, kFoldW);
+        foldNL.kernel.configure (kFoldTurns, kFoldDecay, kFoldDecayOuter, kFoldShrink, kFoldW);
         buildMakeup();
         foldNL.reset();
         upMid.prepare(); dnMid.prepare();
@@ -512,8 +524,9 @@ private:
     static constexpr float  kFoldMin       = 0.05f;
     static constexpr float  kFoldMax       = 16.0f;  // v1 cap
     static constexpr int    kFoldTurns     = 6;      // reflector-cascade turnarounds, then hold
-    static constexpr double kFoldDecay     = 0.5;    // successive fold-peak amplitude ratio
-    static constexpr double kFoldShrink    = 1.15;   // successive fold-spacing ratio (denser outward)
+    static constexpr double kFoldDecay     = 0.65;   // 1st -> 2nd fold-peak amplitude ratio
+    static constexpr double kFoldDecayOuter = 0.85;  // every later fold-peak ratio (r4; r3 0.5 throughout)
+    static constexpr double kFoldShrink    = 1.3;    // successive fold-spacing ratio (denser outward; r3 1.15)
     static constexpr double kFoldW         = 0.8;    // knee smoothing half-support (triangle kernel, folder units)
     static constexpr float  kTopCvOctPerV  = 0.4f;   // HI drive CV, same law as fold
     static constexpr float  kTopMaxDrive   = 40.0f;
@@ -532,35 +545,42 @@ private:
     // ---- MID level compensation ------------------------------------------
     // A folder holds its level as it folds: the output stage's makeup gain
     // tracks the fold gain so a nominal (2.5 V) sine comes out at the same
-    // RMS at every FOLD setting, referenced to the default FOLD (makeup 1
-    // there, so the default voice is level-unchanged). Tabulated at
-    // configure time from the kernel's own static curve: rms of
-    // f(g·sin) over 256 phases, 32 points/octave over the FOLD-knob gain
-    // range 0.5x..16x. Below 0.5x (negative VC FOLD) the makeup is held, so
-    // the section fades out as a plain attenuator. Capped at 2x so the
-    // deepest folds peak at <= 5 V (they sit ~2 dB under the default level
-    // instead of the uncompensated ~8 dB).
+    // level at every FOLD setting, referenced to the default FOLD (makeup 1
+    // there, so the default voice is level-unchanged). "Level" = peak^0.6 ·
+    // rms^0.42 (round 4): a hardware folder holds its PEAK (folding stays
+    // inside the rails) and r3's RMS-only makeup let the peak climb +6.4 dB
+    // over the sound-bar sweep; the geometric blend holds both within ±2 dB
+    // (2 V and 2.5 V sines). Tabulated at configure time from the kernel's
+    // own static curve over 256 phases, 32 points/octave over the FOLD-knob
+    // gain range 0.5x..16x. Below 0.5x (negative VC FOLD) the makeup is
+    // held, so the section fades out as a plain attenuator. Capped at 2x so
+    // the deepest folds peak at <= 5 V.
     static constexpr int   kMkPerOct = 32;
     static constexpr float kMkLog2Lo = -1.0f;                  // 0.5x
     static constexpr float kMkLog2Hi = 4.0f;                   // 16x
     static constexpr int   kMkN = (int) ((kMkLog2Hi - kMkLog2Lo) * kMkPerOct) + 1;
     static constexpr float kMkRefFold = 0.3f;                  // FOLD ctl default
     static constexpr double kMkMax = 2.0;                      // fold peaks stay <= 2x nominal (5 V)
-    double foldRms (double g) const
+    static constexpr double kMkPeakW = 0.58;                   // level metric: peak^0.58 · rms^0.42
+    // level metric of f(g·sin): geometric blend of RMS and peak (weight
+    // kMkPeakW on the peak), over 256 phases
+    double foldLevel (double g) const
     {
-        double acc = 0.0;
+        double acc = 0.0, pk = 0.0;
         for (int i = 0; i < 256; ++i)
         {
             const double y = foldNL.kernel.f (g * std::sin (6.283185307179586 * (i + 0.5) / 256.0));
             acc += y * y;
+            pk = std::max (pk, std::fabs (y));
         }
-        return std::sqrt (acc / 256.0);
+        const double rms = std::sqrt (acc / 256.0);
+        return std::exp (kMkPeakW * std::log (std::max (pk, 1e-12)) + (1.0 - kMkPeakW) * std::log (std::max (rms, 1e-12)));
     }
     void buildMakeup()
     {
-        const double ref = foldRms (0.5 * std::exp2 (4.0 * kMkRefFold));
+        const double ref = foldLevel (0.5 * std::exp2 (4.0 * kMkRefFold));
         for (int i = 0; i < kMkN; ++i)
-            mkTab[i] = (float) std::min (kMkMax, ref / foldRms (std::exp2 (kMkLog2Lo + (double) i / kMkPerOct)));
+            mkTab[i] = (float) std::min (kMkMax, ref / foldLevel (std::exp2 (kMkLog2Lo + (double) i / kMkPerOct)));
     }
     float makeupFor (float g) const
     {
@@ -699,11 +719,12 @@ public:
     }
 
     // Feedthrough law (amplitude re unity, per trim t in 0..1):
-    //   bleed(t) = -102 + 62·sqrt(t) dB  ->  t = 0: -102 (<= -80 calibrated
-    //   min), t = 0.15 (default): -78.0 (inside the -60..-80 "subtle" band,
-    //   ~80 dB carrier rejection as documented for the R*S RING), t = 1: -40
-    //   (>= -50 audible bleed). Monotonic. (Was -90 + 50·sqrt(t), default
-    //   -70.6 dB; retuned 2026-11-05, LOG.md.)
+    //   bleed(t) = -102 + 57.3·sqrt(t) dB  ->  t = 0: -102 (<= -80 calibrated
+    //   min), t = 0.15 (default): -79.8 (the quiet end of the -60..-80
+    //   "subtle" band: ~80 dB carrier rejection re the input, as documented
+    //   for the R*S RING), t = 1: -44.7 (>= -50 audible bleed). Monotonic.
+    //   (r1 -90 + 50·sqrt(t), default -70.6; r2/r3 -102 + 62·sqrt(t),
+    //   default -78.0; round 4 -79.8 — LOG.md.)
     static float bleedLaw (float t)
     {
         const float dB = kBleedMinDb + kBleedSpanDb * std::sqrt (std::clamp (t, 0.0f, 1.0f));
@@ -712,7 +733,7 @@ public:
 
 private:
     static constexpr float kBleedMinDb  = -102.0f;
-    static constexpr float kBleedSpanDb = 62.0f;
+    static constexpr float kBleedSpanDb = 57.3f;
 
     static float mapGain (float v) { return dsp::expmap (v, 0.5f, 4.0f); }
     static float mapUnit (float v) { return std::clamp (v, 0.0f, 1.0f); }
