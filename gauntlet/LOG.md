@@ -689,3 +689,144 @@ Self-contained entry, branch `sound-r2` (from `vcm-sweep-fix` e219bf1).
   527 → 200; T16 stub baseline 38.7× → 38.2× (≥ 6×); scratch full-engine check
   (default patch + BOT/TOP/RING patched, min of 5 × 10 s, -O3) 30.8× vs
   28.7× before.
+
+## 2026-11-06 — Sound bar round 3 (fixes for the sound-r2 blind critic)
+
+Self-contained entry, branch `sound-r3` (from `integrate-r2` 5cb0299). Every
+finding was probed at the jack (scratch tools, not committed) before and after.
+
+- **Finding 1 — VCM BOT too smooth (square-law cascade = a Chebyshev
+  polynomial).** Root cause: `2y² − 1` per stage has no cusp, so the full
+  depth output was near-pure H8 (render: H6/H10 −24, H16 −112 dB, nothing
+  above ~6 kHz). A bare rectifier `2|y| − 1` has the cusp but crosses at
+  30°/150° (round 1: H8 starved). Fix (`ModulesShapers.h`, internals only):
+  each stage is a blend `r(y) = (1−λ)(2y² − 1) + λ((4/π)·asin|y| − 1)` — the
+  second term is a precision full-wave rectifier behind a sine→triangle
+  pre-warp, which turns a sine into a doubled TRIANGLE: a true rectifier cusp
+  (1/n² series) whose crossings sit at the symmetric 45°/135°, so the octaves
+  still cascade. λ = 0.05 / 0.20 / 0.35 along the cascade, chosen in an
+  offline model (C++ scratch, exact DFT of the cascade on an ideal sine) by
+  scanning λ1 0–0.1, λ2 0.05–0.3, λ3 0.1–0.5 and the `2|y|^p − 1` family
+  (p 1.3–1.8: H6/H10 at −8…−15 dB around H8, no dense series — rejected) and a
+  symmetric `h(y²)` √-cusp family (similar, less clean H4). Larger λ1 puts H4
+  within 20 dB of H8 (the round-2 ≥ 20 dB dominance test). Because in each
+  third of the depth only one stage's amount moves and the stage crossfade is
+  linear in it, the composite at any depth is an exact blend of four static
+  curves; they are tabulated once (static, shared, 4097 points, double) as
+  piecewise-linear f with exact F1/F2, and the kernel runs **ADAA2** (ADAA1
+  left the 0–20 kHz alias floor at −84 dB; ADAA2 −102 dB). Per depth the
+  sine-referenced DC is subtracted and the sine-referenced AC rms sets the
+  level compensation (closed form from tabulated sine moments). SQ output and
+  rail limiter unchanged.
+  Ideal sine (gate test): depth 1/3 → H2 (next −46.8 dB), 2/3 → H4 (−32.8),
+  1 → H8 (−25.2); full depth H16 −26.4, H24 −25.3, H32 −37.1, H48 −42.3, H64
+  −46.0, H96 −52.3 dB re H8 (r2: −112 dB and below); level over 13 depth steps
+  within 0.03 dB; alias 0–20 kHz −92.5 dB re max (32768-pt window). Render:
+  H1..H16 −123, −67, −123, −25, −119, −33, −99, 0, −99, −35, −115, −32, −130,
+  −51, −117, −27; even:odd +95.6 dB; worst non-harmonic −102 dB over 0–20 kHz
+  (r2 −119), −82.1 dB @ 23.8 kHz full-band (cusp content above Nyquist in the
+  halfband's transition band) — the strict "alias floor at least as good as
+  now" holds only below ~20 kHz; a dense rectifier series cannot be as
+  alias-free as a degree-8 polynomial. VCM bare perf 917–992 → 1010 cyc/smp
+  (3× bound 1656).
+- **Finding 2a — NTO VAR minimum not clean.** Root cause: VAR's shaper drive
+  started at kVarBase 0.94 (under-driven: a kink at every peak → H3 −37 dBc,
+  odd tail to H45). Fix (`ModulesNTO.h`, one constant): drive starts at 1.0,
+  where `sin(π/2·tri)` is an exact sine of the core phase. Jack: step 1 THD
+  1.546 % → 0.000 % (H3 −37 → −118 dBc); centroid 220, 327, 413, 449, 523,
+  680, 994, 1819 Hz (T04 9-step CV sweep 262 … 2105, strictly rising).
+  Render step 1 THD 0.23 % (the OUT bus limiter's H3; v1 0.36 %).
+  **hardware-spec reading (logged as asked):** §2.1's [DOC] text from the SFU
+  manual names only the endpoints — "Low voltages = [sine glyph], high
+  voltages [pulse/M glyph]"; the "sine → saw/square-ish → 'M'" midpoint is
+  the research note's own gloss ("i.e. … roughly"), not a documented stage.
+  So no saw-ish (even-harmonic) mid-sweep stage was added. The critic's
+  "over-bright partials around 3.3 and 9.9 kHz at steps 6–8" are H15 and H45
+  of 220 Hz (−40/−67 dBc at step 6, −22/−44 at step 8): harmonics of the
+  folded/squared shape, not aliasing — the worst non-harmonic at step 8 is
+  −76 dBc at 23.6 kHz, ≤ −97 dBc at steps 1–6.
+- **Finding 2b — VCM MID clicks at every FOLD step.** The ctls WERE smoothed
+  (one-pole, 2 ms), but a one-pole starts at its steepest slope: the fold
+  gain/makeup trajectory has a corner at the step and the transfer change
+  splatters broadband. Jack probe (sound-bar feed): 4–12 / 12–20 kHz excess
+  at step 1→2 +31.5 / +40.2 dB. Fix (`ModulesShapers.h`): `Smoothed` is now
+  two cascaded one-poles (critically damped, C1 start), 3 ms per pole, on
+  every VCM and RING continuous ctl (FOLD, BIAS, DRIVE, DEPTH, GAIN, MORPH).
+  Scan: 2-pole 2 ms +1.8/+5.4, 3 ms +1.1/+2.5, 5 ms +0.9/+1.6 dB. Render:
+  worst excess over the 7 steps +21.8 → −0.0 dB (v1 +0.3). MID minimum-fold
+  THD in the render 1.28 → 0.81 % via the VCA fix below (the feed's VCA added
+  H3 at 2 V). A narrower knee was re-scanned now that the feed is clean:
+  W 0.7 → ideal-sine min-fold THD 0.85 → 0.36 %, W 0.6 → 0.06 %, but the
+  real-sine centroid's worst step ratio at VCA 0.5 falls to 1.0011 (W 0.7)
+  and alias margins shrink; W 0.8 kept.
+- **Finding 3 — VCFQ ping 11 cents flat; peak doubles with Q.** TPT prewarp
+  `g = tan(π·fc/(2·fs))` is exact inside the 2× island, and the IIR
+  halfbands' phase cannot move a free ring's frequency. Probe: at Q 35 the
+  ring pitch fell with level (PING 0.1 −0.4, 0.5 −3.8, 0.9 −6.2 cents): the
+  integrators' `10·tanh(v/10)` compressed every signal (describing-function
+  gain < 1 → lower ωn). The rest of the critic's −11 cents was the measurement
+  window (it started at the pulse). Fix (`ModulesVCFQ.h`): integrator inputs
+  exactly linear below 5 V, tanh shoulder to the same ±10 V ceiling;
+  self-oscillation limiting (damping above 6 V, rails) unchanged. Q 35 now
+  799.92 Hz at every ping level (theory fc·√(1−1/4Q²) = 799.92); Q 6 −6.0
+  and Q 2 −56 cents are the damped natural frequency itself. Render (new
+  5–45 ms window): 797.3 → 799.9 Hz; decays 4.0, 10.8, 27.5, 64.4 ms.
+  **Amplitude vs Q — interpretation, unchanged:** hardware-spec §2.4 says
+  only "damping set by Q, pitch by frequency". The 0.5–1 ms ping pulse is a
+  sizeable fraction of the 1.25 ms period; a 2-pole band-pass struck by it
+  has a Q-independent peak at high Q (0.107 → 0.114 FS from Q 15 to 35) and
+  a lower one at Q 2, where the ring decays within its first cycle. That is
+  the struck-resonator physics, so the law stays (v1's flat 0.11 comes from a
+  one-sample impulse).
+- **Finding 4 — dusg_env: rise slows ~10 %, H3 at 3 kHz.** Jack probes: DUSG
+  OUT linear to 0.000 % FS; VCA2 output envelope 0.58 % FS; carrier H3: NTO
+  SINE −52.0, VCA2 OUT −40.0 dBc. One cause for both: VCA's output stage
+  `8·tanh(y/8)` — at the 2.5 V top of the swing its slope is 0.91 (the ~10 %
+  slow-down) and it adds H3 (x²/12 → −42 dBc). Fix (`ModulesNoiseVCA.h`):
+  output stage exactly linear to ±5 V (nominal 2.5 V × the +6 dB max), tanh
+  shoulder to the same ±8 V ceiling above. T11 law, +6 dB max, cutoff and
+  click bound unchanged. Jack: envelope 0.58 → 0.001 %, H3 −40.0 → −51.6
+  dBc (= the NTO SINE's own residual). Render: rise 0.86 → 0.31 % FS, fall
+  0.86 → 0.30 % (v1 0.28 / 0.26); carrier H3 −43.8 dBc (v1 −49.6) — the
+  remaining ~8 dB is the OUT bus `fastTanh` limiter (≈ −47.7 dBc at this
+  0.22 FS level), in `ModulesOut.h`, outside this round's allowed files. The
+  render patch already matches v1's semantics (v1 MANIFEST file 7: VCA2
+  linear, level 0, carrier amt 0.5 ≡ v2 MASTER 0.4 at the same output level),
+  so it was not changed.
+- **Finding 5 — measurement** (`satk_measure`): T05d line fit applied to every
+  `dusg_cycle` ramp (≈ 1600 ramps, worst rise/fall): v1 **3.18 % OUT**, v2
+  0.84 % IN (a new discriminating band row). Also new info rows: VAR
+  minimum-shape THD, MID click excess at the FOLD steps, dusg_env carrier H3;
+  the ping ring-frequency window now starts 5 ms after the onset.
+- **Side effects.** Default voice (NTO VAR drive 1.15 at shape 0.15 instead of
+  1.099; VCA1 no longer compresses the pluck's ~5.6 V peaks): T15 note 60
+  rms/peak 0.0698/0.5887 → **0.0737/0.6631** (inside full scale); render
+  `default_note60.wav` peak 0.5823 → 0.6552, RMS L 0.03241 → 0.03425.
+  Preset RMS/peak (t_presets, before → after): Default Voice 0.0356/0.589 →
+  0.0377/0.663; Fold Sweep Voice 0.0519/0.533 → 0.0544/0.576; Filter Pings
+  0.0646/0.402 → 0.0652/0.407; Slope Bongos 0.0775/0.606 → 0.0839/0.689;
+  Ring Fold Drone 0.2356/0.423 → 0.2400/0.465 (still the known FAIL, being
+  retrimmed elsewhere); Random Melody 0.1143/0.687 → 0.1203/0.764; Wild
+  Animal 0.1211/0.338 → 0.1249/0.343.
+- **Tests** (+7 checks, none loosened): `t_nto` VAR minimum as clean as SINE
+  (THD ≤ 0.2 %; old 1.55 % fails); `t_vcfq` ping tuned (Q 35 within 1 cent
+  of fc·√(1−1/4Q²) at PING 0.1 and 0.9, level spread ≤ 0.5 cent; old −6.2
+  fails); `t_noise_vca` VCA linear at nominal (2.5 V, unity and +6 dB, H3 ≤
+  −90 dBc; old −40/−30 fails); `t_vcm_ring` MID FOLD step and RING MORPH step
+  do not click (4–12 kHz excess ≤ +6 dB; one-pole: +15.0 / +15.0, now +3.7 /
+  +4.7), BOT rectifier cusps (H16/H24/H32/H48 ≥ −45 dB re max; r2 −112),
+  BOT alias floor 0–20 kHz ≤ −90 dB re max.
+- **Renders / packet.** `satk_render` re-run (deterministic, `diff`-verified
+  twice). Changed: `nto_shape_sweep`, `vcm_mid_foldsweep`, `vcm_bot_full`,
+  `vcfq_ping`, `dusg_env_shape`, `default_note60`, `supplementary/ring_bipolar`
+  + `ring_morph_sweep`, `control/ring_bipolar_leaky` (VCFQ coupler); others
+  byte-identical; no monitor level changed (all pairs within ±1 dB). New
+  negative control `control/dusg_env_rc.wav` (RC capacitor-charge envelope in
+  place of linear slopes: T05d 15.7 % FS OUT). Spectrograms regenerated with
+  the same ffmpeg settings. Blind packet `judge/sound-r3/` (new A/B draws,
+  control as `dusg_env_C`, VCA excerpt added; key `judge/KEY-sound-r3.md`).
+- Gauntlet **225/226** (+7; the one FAIL is the known preset-4 'Ring Fold
+  Drone' level, not in scope), UX 30/30, zero warnings in our sources (full
+  Release arm64 build). Perf: T16 stub baseline 43.5× (≥ 6×); scratch
+  full-engine check (default patch + BOT/TOP/RING patched, min of 5 × 10 s,
+  -O3) 33.6× vs 31.8× before (same session).
