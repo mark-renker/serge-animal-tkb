@@ -256,8 +256,8 @@ inline void runT02()
                "16 Hz PULSE: 0/5 V square, fund within 1 dB", pmin, pmax);
     }
     {
-        const int n = 16384;
-        auto grab = [n] (int jack) // capture n: MSVC requires it (passed by reference)
+        static constexpr int n = 16384; // static storage: no capture needed (MSVC C3493 / clang unused-capture)
+        auto grab = [] (int jack)
         { Solo s; s.n->ctls[NTO::cFreq].v = 1.0f; s.run (9600); return s.capture (jack, n); };
         auto sn = grab (NTO::jSine), tr = grab (NTO::jTri), sa = grab (NTO::jSaw), pu = grab (NTO::jPulse);
         double aS = 0, aT = 0, aW = 0;
