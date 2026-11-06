@@ -945,3 +945,34 @@ renders.
   CI fix; present on `integrate-r2`, outside this round's allowed files).
   Perf: T16 stub baseline 41.8–44.0× (≥ 6×); VCM bare 1011–1040 cyc/smp
   (3× bound 1656), RING 201–204 (bound 564).
+
+## 2026-11-05 — Phase 4: SOUND soft bar CLOSED (round 4 verdict + Mark's approval)
+
+Blind rounds (fresh critic each, criteria-blind packet, new random A/B key and a new
+negative control each round). v2 verdicts vs v1 on scored pieces:
+
+| round | v2 closer | tie | v1 closer | control |
+|---|---|---|---|---|
+| r1 | 6 | 1 | 2 (VCM mid, default voice) | S&H saw: flagged worst |
+| r2 | 8 | 1 | 1 (DUSG env) | leaky ring: flagged worst |
+| r3 | 10 | 0 | 1 (ring, narrow) | RC DUSG: flagged worst |
+| r4 | 10 | 1 | 0 | single-abs BOT: ranked below v2 |
+
+- All pre-registered bands IN for v2 at r4 (MEASUREMENTS.md); T09 measured on the bipolar
+  ring patch per Mark's amendment.
+- r4 control caveat, recorded honestly: the critic ranked the control (plain single-stage
+  `abs()`, no AA) below v2 and said it "never reaches the documented 2nd→4th→8th transition
+  at full depth", but called it a "correct single-stage rectifier" rather than deliberately
+  degraded (it reserved "broken" for v1's odd-only bottom section). Strictly ambiguous as a
+  "flag"; the verdict is consistent with r1–r3, all of which had unambiguous control flags.
+- Mark approved one final targeted round (r4) and closing by approval if still short. r4
+  met closer-or-tie on every scored piece; the bar is CLOSED. Rounds used: 4 of 5 (sound),
+  9 of 25 global (5 UI + 4 sound).
+- Remaining named gaps, logged for a later polish pass (not adopted now):
+  1. VCM BOT cusp series softer than an ideal rectifier (H16 −21 vs ≈ −14 dB); deliberately
+     capped by T08's cascade margin (next harmonic ≥ 20 dB below the octave). H6/H10 at
+     −34 dB come from the feed's own 3rd harmonic, not stage misalignment.
+  2. VCM MID level varies ≈ ±1.9 dB (peak and RMS span 3.8 dB) across the fold sweep.
+  3. NTO VAR morph is odd-symmetric throughout (no saw-like midpoint); the hardware text
+     names only the sine and pulse/'M' endpoints (r3 interpretation).
+  4. Minor: DUSG-env carrier H3 −43.8 dBc, mostly from the OUT bus soft limiter.
