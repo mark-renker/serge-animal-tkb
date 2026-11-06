@@ -146,7 +146,7 @@ src/plugin/    JUCE processor/editor glue, factory presets
 tests/         satk_gauntlet + satk_uxtests
 tools/         snapshot, render, measure, perf
 docs/          SPEC (frozen interfaces), REDESIGN_PLAN
-gauntlet/      acceptance contract, research notes, renders, judge packets, LOG
+gauntlet/      acceptance contract, renders, judge renders + keys, LOG
 packaging/     installers, release workflow docs
 legacy/        v1: the original Faust plugin, its build script and demos
 ```
@@ -156,3 +156,11 @@ legacy/        v1: the original Faust plugin, its build script and demos
 Session compatibility with v1 (different parameter space; v1 stays installable). Touch-plate
 capacitance, warm-up drift, and the real STS panel's PCO/DTG/UAP module complement. Host
 tempo sync, MPE and polyphony are candidates for a later version.
+
+## License
+
+Serge Animal TKB is free software, licensed under the **GNU Affero General Public License
+v3.0**. See [`LICENSE`](LICENSE). [`NOTICE`](NOTICE) covers copyright, third-party
+components (JUCE under AGPLv3, the VST3 SDK and the VST trademark), and the statement that
+this is an independent recreation, not affiliated with Serge, Random\*Source, STS or any
+hardware maker.
