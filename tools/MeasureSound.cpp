@@ -167,12 +167,19 @@ std::vector<Cell> mNtoSaw (const Buf& x)
 std::vector<Cell> mNtoShape (const Buf& x)
 {
     std::vector<double> c;
+    double thd1 = 0.0;
     for (int k = 0; k < 8; ++k)
     {
         const double f0 = refineF0 (sliceN (x, k + 0.2, 32768), 220.0);
-        c.push_back (t_vcm_ring::centroid (harmonicsWin (slice (x, k + 0.2, 0.75), f0, 100), f0));
+        const auto a = harmonicsWin (slice (x, k + 0.2, 0.75), f0, 100);
+        c.push_back (t_vcm_ring::centroid (a, f0));
+        if (k == 0)
+        {
+            double s2 = 0; for (int h = 2; h <= 40; ++h) s2 += a[(size_t) h] * a[(size_t) h];
+            thd1 = 100.0 * std::sqrt (s2) / std::max (a[1], 1e-12);
+        }
     }
-    return { cell (list (c), strictlyIncreasing (c)) };
+    return { cell (list (c), strictlyIncreasing (c)), info (fmt ("%.2f %%", thd1)) };
 }
 
 // waveform turnarounds per period -> static-transfer slope reversals over one
@@ -205,6 +212,11 @@ std::vector<Cell> mVcmMid (const Buf& x)
         if (k == 7) { aMax = a; f0max = f0; }
     }
     const double lvlSpan = *std::max_element (lvl.begin(), lvl.end()) - *std::min_element (lvl.begin(), lvl.end());
+    // round 3 (critic: clicks at every FOLD step): 4-12 kHz energy in
+    // 512-sample Hann windows around each 1 s step vs the steady state
+    // 0.3 s before/after (t_vcm_ring::stepExcessDb, the gate test's measure)
+    double clickWorst = -1e9;
+    for (int k = 1; k < 8; ++k) clickWorst = std::max (clickWorst, t_vcm_ring::stepExcessDb (x, (size_t) k * 48000));
     const double s = strongestOf (aMax);
     int oddFund = 0, oddMax = 0;
     for (size_t h = 1; h < aMax.size(); h += 2)
@@ -223,7 +235,8 @@ std::vector<Cell> mVcmMid (const Buf& x)
              cell (fmt ("%.1f", rev), rev >= 2.0),
              info (fmt ("%.1f dBc", alias)),
              info (fmt ("%.2f %%", thd1)),
-             info (list (lvl, "%.1f") + fmt (" (span %.1f dB)", lvlSpan)) };
+             info (list (lvl, "%.1f") + fmt (" (span %.1f dB)", lvlSpan)),
+             info (fmt ("%+.1f dB", clickWorst)) };
 }
 
 std::vector<Cell> mVcmBot (const Buf& x)
@@ -270,8 +283,11 @@ std::vector<Cell> mPing (const Buf& x)
             float p = 0;
             d.push_back (1000.0 * t_vcfq::decayTime (seg, p));
             pkSum += p;
-            if (k == 3 && ringHz == 0.0)
-                ringHz = t_nto::zcFreq (Buf (seg.begin(), seg.begin() + std::min<long> ((long) seg.size(), 2400)));
+            // round 3: ring frequency from the free ring only — 5 ms past the
+            // onset (seg starts 1 ms before it), 40 ms long; the r1/r2 window
+            // started at the pulse and included its forced part
+            if (k == 3 && ringHz == 0.0 && seg.size() > 288 + 1920)
+                ringHz = t_nto::zcFreq (Buf (seg.begin() + 288, seg.begin() + 288 + 1920));
             i = b;
         }
         std::sort (d.begin(), d.end());
@@ -279,7 +295,26 @@ std::vector<Cell> mPing (const Buf& x)
         amp.push_back (d.empty() ? 0.0 : pkSum / (double) d.size());
     }
     return { cell (list (med, "%.1f") + " ms", strictlyIncreasing (med) && med.front() > 0.0),
-             info (list (amp, "%.3f")), info (fmt ("%.0f Hz", ringHz)) };
+             info (list (amp, "%.3f")), info (fmt ("%.1f Hz", ringHz)) };
+}
+
+// T05d line fit (shared by dusg_env and dusg_cycle): least-squares line
+// through the points of [a, b) whose value lies in 10..90 % of the swing
+// (lo + 0.1·span .. lo + 0.9·span), max deviation in % of the swing.
+// Returns 100 when fewer than 3 points qualify. t1090 = point span (index units).
+double lineDevPct (const std::vector<double>& y, size_t a, size_t b, double lo, double span, double* t1090 = nullptr)
+{
+    std::vector<std::pair<double, double>> pts;
+    for (size_t k = a; k < b; ++k)
+        if (y[k] >= lo + 0.1 * span && y[k] <= lo + 0.9 * span) pts.push_back ({ (double) k, y[k] });
+    if (pts.size() < 3) return 100.0;
+    if (t1090 != nullptr) *t1090 = pts.back().first - pts.front().first;
+    double sx = 0, sy = 0, sxx = 0, sxy = 0; const double N = (double) pts.size();
+    for (auto& p : pts) { sx += p.first; sy += p.second; sxx += p.first * p.first; sxy += p.first * p.second; }
+    const double bb = (N * sxy - sx * sy) / (N * sxx - sx * sx), aa = (sy - bb * sx) / N;
+    double dev = 0;
+    for (auto& p : pts) dev = std::max (dev, std::fabs (p.second - (aa + bb * p.first)));
+    return 100.0 * dev / span;
 }
 
 std::vector<Cell> mDusgCycle (const Buf& x)
@@ -288,7 +323,33 @@ std::vector<Cell> mDusgCycle (const Buf& x)
     size_t up = 0, n = 0;
     for (size_t i = 1; i < w.size(); ++i) if (w[i] != w[i - 1]) { ++n; if (w[i] > w[i - 1]) ++up; }
     const double frac = (double) up / (double) std::max<size_t> (1, n);
-    return { cell (fmt ("%.3f", frac), std::fabs (frac - 0.5) <= 0.01), info (fmt ("%.2f Hz", t_nto::zcFreq (w))) };
+    // round 3: T05d linearity on the cycle ramps too (critic request). Each
+    // rise and each fall between consecutive turning points (local extrema
+    // of the 200 Hz triangle, 1-5 s), the same 10..90 % least-squares line
+    // as dusg_env, max deviation in % of that segment's swing; worst over
+    // all segments. (The output bus's 10 Hz DC blocker bends a 200 Hz ramp
+    // by a small, identical amount in both versions.)
+    std::vector<double> y (w.begin(), w.end());
+    std::vector<size_t> turn;
+    for (size_t i = 1; i + 1 < y.size(); ++i)
+    {
+        const bool mx = y[i] >= y[i - 1] && y[i] > y[i + 1];
+        const bool mn = y[i] <= y[i - 1] && y[i] < y[i + 1];
+        if ((mx || mn) && (turn.empty() || i - turn.back() > 40)) turn.push_back (i);
+    }
+    double worstR = 0, worstF = 0; int segs = 0;
+    for (size_t t = 1; t < turn.size(); ++t)
+    {
+        const size_t a = turn[t - 1], b = turn[t] + 1;
+        const double lo = std::min (y[a], y[turn[t]]), span = std::fabs (y[turn[t]] - y[a]);
+        if (span <= 0.0) continue;
+        const double d = lineDevPct (y, a, b, lo, span);
+        if (y[turn[t]] > y[a]) worstR = std::max (worstR, d); else worstF = std::max (worstF, d);
+        ++segs;
+    }
+    return { cell (fmt ("%.3f", frac), std::fabs (frac - 0.5) <= 0.01), info (fmt ("%.2f Hz", t_nto::zcFreq (w))),
+             cell (fmt ("rise %.2f", worstR) + fmt (" / fall %.2f %% FS", worstF) + fmt (" (%.0f ramps)", (double) segs),
+                   segs > 100 && std::max (worstR, worstF) <= 3.0) };
 }
 
 std::vector<Cell> mDusgEnv (const Buf& x)
@@ -301,7 +362,7 @@ std::vector<Cell> mDusgEnv (const Buf& x)
         for (size_t j = i; j < i + 48; ++j) p = std::max (p, (double) std::fabs (x[j]));
         env.push_back (p);
     }
-    double worstRise = 0, worstFall = 0, riseT = 0, fallT = 0;
+    double worstRise = 0, worstFall = 0, riseT = 0, fallT = 0, worstH3 = -300.0;
     const double starts[3] = { 0.3, 2.4, 4.5 };
     for (double st : starts)
     {
@@ -312,26 +373,27 @@ std::vector<Cell> mDusgEnv (const Buf& x)
         // T05d: mid 80 % of the swing (10..90 % FS), least-squares line, max deviation
         auto lineDev = [&] (size_t a, size_t b, double& t1090)
         {
-            std::vector<std::pair<double, double>> pts;
-            for (size_t k = a; k < b; ++k)
-                if (env[k] >= 0.1 * fs && env[k] <= 0.9 * fs) pts.push_back ({ (double) k, env[k] });
-            if (pts.size() < 3) return 100.0;
-            t1090 = (pts.back().first - pts.front().first) / 1000.0;
-            double sx = 0, sy = 0, sxx = 0, sxy = 0; const double N = (double) pts.size();
-            for (auto& p : pts) { sx += p.first; sy += p.second; sxx += p.first * p.first; sxy += p.first * p.second; }
-            const double bb = (N * sxy - sx * sy) / (N * sxx - sx * sx), aa = (sy - bb * sx) / N;
-            double dev = 0;
-            for (auto& p : pts) dev = std::max (dev, std::fabs (p.second - (aa + bb * p.first)));
-            return 100.0 * dev / fs;
+            double n1090 = 0.0;
+            const double d = lineDevPct (env, a, b, 0.0, fs, &n1090);
+            t1090 = n1090 / 1000.0;
+            return d;
         };
         double rt = 0, ft = 0;
+        // round 3: carrier purity at the top of the swing (critic: a 3 kHz
+        // partial) — H3 re H1 of the 1 kHz carrier, 50 ms ending at the peak
+        if (kp >= 50)
+        {
+            const auto a = harmonicsWin (slice (x, (double) (kp - 50) / 1000.0, 0.05), 1000.0, 5);
+            worstH3 = std::max (worstH3, gauntlet::db (a[3], a[1]));
+        }
         worstRise = std::max (worstRise, lineDev (k0, kp + 1, rt));
         worstFall = std::max (worstFall, lineDev (kp, k1, ft));
         riseT += rt / 3.0; fallT += ft / 3.0;
     }
     return { cell (fmt ("%.2f %% FS", worstRise), worstRise <= 3.0),
              info (fmt ("%.2f %% FS", worstFall)),
-             info (fmt ("%.3f s", riseT / 0.8) + fmt (" / %.3f s", fallT / 0.8)) };
+             info (fmt ("%.3f s", riseT / 0.8) + fmt (" / %.3f s", fallT / 0.8)),
+             info (fmt ("%.1f dBc", worstH3)) };
 }
 
 std::vector<Cell> mDusgDirect (const Buf& x)
@@ -440,7 +502,8 @@ void runAll()
                { "info", "f0 (BH-FFT peak, interpolated)", "1975 Hz" } },
              mNtoSaw, "control/nto_saw_1975_naive_zoh12k.wav");
     measure ("nto_shape", "nto_shape_sweep.wav",
-             { { "T04 (extra)", "harmonic centroid per shape step 1..8 (Hz)", "strictly increasing" } },
+             { { "T04 (extra)", "harmonic centroid per shape step 1..8 (Hz)", "strictly increasing" },
+               { "T04 (info)", "THD at minimum shape (step 1, H2..H40)", "≤ 2 %" } },
              mNtoShape);
     measure ("vcm_mid_fold", "vcm_mid_foldsweep.wav",
              { { "T08", "odd harmonics ≥ −40 dBc at max fold (count)", "≥ 5 (re H1 and re max)" },
@@ -449,7 +512,8 @@ void runAll()
                { "T08 (proxy)", "transfer slope reversals at max fold (from waveform extrema)", "≥ 2" },
                { "info", "worst non-harmonic at max fold, 220 Hz (T08's AA band is specified at 1 kHz)", "(−50 dBc @ 1 kHz)" },
                { "info", "THD at minimum fold (step 1, H2..H40)", "—" },
-               { "info", "RMS per fold step 1..8 (dBFS)", "—" } },
+               { "info", "RMS per fold step 1..8 (dBFS)", "—" },
+               { "info", "click at the FOLD steps: worst 4–12 kHz excess over steady state (7 steps)", "—" } },
              mVcmMid);
     measure ("vcm_bot", "vcm_bot_full.wav",
              { { "T08", "even:odd energy at full depth (steady state 1.0–4.5 s)", "≥ +12 dB" },
@@ -460,11 +524,12 @@ void runAll()
     measure ("vcfq_ping", "vcfq_ping.wav",
              { { "T07", "ping decay peak→−40 dB, median per Q step (Q 2/6/15/35)", "strictly increasing" },
                { "info", "mean ping peak per Q step (FS)", "—" },
-               { "info", "ring frequency, first Q=35 ping (zero crossings)", "fc = 800 Hz" } },
+               { "info", "ring frequency, first Q=35 ping (zero crossings, 5–45 ms after onset)", "fc = 800 Hz" } },
              mPing);
     measure ("dusg_cycle", "dusg_cycle.wav",
              { { "T05c (info)", "rising fraction of the MAIN OUT cycle, rise = fall dialed (slope symmetry; not END)", "0.50 ± 0.01" },
-               { "info", "cycle frequency", "200 Hz" } },
+               { "info", "cycle frequency", "200 Hz" },
+               { "T05d", "cycle ramps: mid-80 % deviation from a line, worst rise / fall over all ramps 1–5 s", "≤ 3 % FS" } },
              mDusgCycle);
     // round-2 fix: T05e is measured on END itself (pair renders, both versions)
     measure ("dusg_end", "supplementary/dusg_end_duty.wav",
@@ -473,8 +538,9 @@ void runAll()
     measure ("dusg_env", "dusg_env_shape.wav",
              { { "T05d", "mid-80 % rise deviation from a line (worst of 3)", "≤ 3 % FS" },
                { "info", "mid-80 % fall deviation from a line (worst of 3)", "—" },
-               { "T05a (info)", "rise / fall time (10–90 % ÷ 0.8), dialed 0.5 / 1.0 s", "±10 %" } },
-             mDusgEnv);
+               { "T05a (info)", "rise / fall time (10–90 % ÷ 0.8), dialed 0.5 / 1.0 s", "±10 %" },
+               { "info", "1 kHz carrier H3 re H1, 50 ms up to each rise peak (worst of 3)", "—" } },
+             mDusgEnv, "control/dusg_env_rc.wav");
     measure ("dusg_env_direct", "dusg_env_shape_monitor_direct.wav",
              { { "info", "slow envelope straight through the monitor bus", "—" } },
              mDusgDirect);

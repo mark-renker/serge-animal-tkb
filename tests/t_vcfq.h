@@ -246,6 +246,37 @@ inline void testPing()
     bool bounded = true;
     for (float p : peaks) if (! (p > 0.05f && p <= 11.0f)) bounded = false;
     CHECK (bounded, "ping amplitude audible and bounded (<= 11 V)", peaks[0], peaks[3]);
+
+    // round 3 (2026-11-06): ping TUNING. A Q 35 ping rings at the damped
+    // natural frequency fc·sqrt(1 - 1/4Q²) (-0.18 cent) within 1 cent, at a
+    // soft AND a hot ping (the integrators are linear at ping levels — the
+    // old tanh-everywhere integrators rang 6 cents flat at PING 0.9).
+    // Free ring only: 15..55 ms (the trigger fires at sample 0).
+    {
+        auto ringHz = [] (float lvl)
+        {
+            std::vector<float> bp;
+            capturePing (35.0, 0.0, lvl, bp, 4800);
+            double first = -1.0, last = -1.0; int n = 0;
+            for (int i = 721; i < 2640; ++i)
+            {
+                const double a = bp[(size_t) i - 1], b = bp[(size_t) i];
+                if (a < 0.0 && b >= 0.0)
+                {
+                    const double t = (double) (i - 1) + a / (a - b);
+                    if (first < 0.0) first = t; else ++n;
+                    last = t;
+                }
+            }
+            return n > 0 ? SR * n / (last - first) : 0.0;
+        };
+        const double want = kFc * std::sqrt (1.0 - 1.0 / (4.0 * 35.0 * 35.0));
+        const double cLo = 1200.0 * std::log2 (ringHz (0.1f) / want);
+        const double cHi = 1200.0 * std::log2 (ringHz (0.9f) / want);
+        std::printf ("  ping Q 35 ring pitch vs fc·sqrt(1-1/4Q²): %+.2f cents (PING 0.1), %+.2f cents (PING 0.9)\n", cLo, cHi);
+        CHECK (std::fabs (cLo) <= 1.0 && std::fabs (cHi) <= 1.0 && std::fabs (cHi - cLo) <= 0.5,
+               "ping tuned: Q 35 rings at fc within 1 cent, level-independent (0.5 cent)", cLo, cHi);
+    }
 }
 
 inline void testSelfOsc()

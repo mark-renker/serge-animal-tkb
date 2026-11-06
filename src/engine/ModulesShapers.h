@@ -8,11 +8,13 @@
 //             knees (triangle-kernel smoothing), the whole composite in ONE
 //             closed-form 2nd-order ADAA kernel; output level compensated
 //             across the FOLD range (makeup table).
-//   VCM BOT : three cascaded level-compensated square-law full-wave
-//             rectifiers, depth crossfades stage by stage (sine: H1 -> H2 ->
-//             H4 -> H8), expanded into one degree-8 polynomial and ADAA1'd as
-//             one kernel; SQ out = squared-up (ADAA1 tanh, high gain) version
-//             of the cascade output.
+//   VCM BOT : three cascaded level-compensated full-wave rectifiers (each a
+//             square-law / pre-warped precision-rectifier blend: symmetric
+//             crossings so the octaves cascade, real cusps so the even series
+//             is dense), depth crossfades stage by stage (sine: H1 -> H2 ->
+//             H4 -> H8), tabulated composite ADAA1'd as one kernel; SQ out =
+//             squared-up (ADAA1 tanh, high gain) version of the cascade output.
+//   Continuous ctls: 2-pole (2 x 3 ms) smoothers — no zipper/click on steps.
 //   VCM TOP : LO = linear two-quadrant VCA, HI = VC rounded clip (ADAA1 tanh).
 //   RING    : four-quadrant multiplier X·Y with linear-then-soft input stages
 //             (NOT a diode ring), DC-coupled, morph dry -> AM -> ring, and
@@ -127,47 +129,163 @@ private:
 };
 
 // VCM BOT composite: the whole three-stage rectifier cascade at the current
-// depth, expanded into ONE polynomial of the normalised input u (degree <= 8),
-// ADAA1-wrapped as a single kernel (DspUtils rule: one kernel per island).
-// Each stage is the level-compensated square-law full-wave rectifier
-//   r(y) = 2·y² − 1      (|y| ≤ 1: rectified, doubled, re-centred to ±1)
-// crossfaded by its amount a:  y' = y + a·(r(y) − y)  =  2a·y² + (1−a)·y − a.
-// Coefficients are rebuilt only when the depth changes.
+// depth, as ONE kernel of the normalised input u (|u| <= 1), ADAA1-wrapped
+// (DspUtils rule: one kernel per island).
+//
+// Each stage is a level-compensated full-wave rectifier that maps ±1 onto ±1:
+//   r_k(y) = (1 − λk)·(2y² − 1) + λk·((4/π)·asin|y| − 1)
+// The square-law half (2y² − 1) doubles a sine exactly into a centred sine
+// (round 2: T2∘T2∘T2 = T8, the octave cascade); the asin half is a precision
+// rectifier |w| behind a sine→triangle pre-warp w = (2/π)·asin y — it turns a
+// sine into a doubled TRIANGLE, i.e. a real rectifier cusp (a 1/n² series)
+// whose zero crossings sit at the symmetric 45°/135°, so the next stage can
+// double it again. (A bare 2|y| − 1 crosses at 30°/150°: the octaves stopped
+// cascading — round 1. Pure square law has no cusp at all: a smooth
+// Chebyshev-like H8 — round-2 critic.) λ grows along the cascade
+// (0.05 / 0.20 / 0.35, fitted in an offline model: ideal sine, full depth
+// → H8 dominant by ≥ 25 dB with a dense, slowly falling even series H16,
+// H24, H32 … at −27 … −56 dB out to H128; LOG.md 2026-11-06).
+//
+// Depth d crossfades stage by stage: in third k only stage k's amount a
+// moves (earlier stages full, later ones bypassed) and y_k = y + a·(r_k(y) − y)
+// is LINEAR in a, so the composite at any depth is an exact linear blend of
+// four static curves T0..T3 (depth 0, 1/3, 2/3, 1). Those are tabulated once
+// (static, shared) on a fine u grid as piecewise-linear f with the exact
+// piecewise-quadratic antiderivative F1 (consistent pair for ADAA1). Per
+// depth, the sine-referenced mean is subtracted inside the kernel (the
+// rectified wave's DC) and the sine-referenced AC rms gives the level
+// compensation gain (`comp`), both closed-form from tabulated sine moments.
 struct RectCascadeKernel
 {
-    static constexpr int kDeg = 8;
-    double c[kDeg + 1] {}, C[kDeg + 2] {}; // P(u) and its antiderivative
+    static constexpr int kN = 4096;           // grid intervals over u in [-1, 1]
+    static constexpr double kLam[3] = { 0.05, 0.20, 0.35 };
 
-    void build (const float (&a)[3])
+    struct Tables
     {
-        double p[kDeg + 1] {}; p[1] = 1.0; // y0 = u
-        int deg = 1;
-        for (int k = 0; k < 3; ++k)
-        {
-            const double ak = a[k];
-            if (ak <= 0.0) continue;
-            double sq[kDeg + 1] {};
-            for (int i = 0; i <= deg; ++i)
-                for (int j = 0; j <= deg && i + j <= kDeg; ++j) sq[i + j] += p[i] * p[j];
-            deg = std::min (kDeg, 2 * deg);
-            for (int i = 0; i <= deg; ++i) p[i] = 2.0 * ak * sq[i] + (1.0 - ak) * p[i];
-            p[0] -= ak;
-        }
-        for (int i = 0; i <= kDeg; ++i) c[i] = p[i];
-        C[0] = 0.0;
-        for (int i = 0; i <= kDeg; ++i) C[i + 1] = c[i] / (double) (i + 1);
+        double f[4][kN + 1], F[4][kN + 1], G[4][kN + 1]; // T0..T3, 1st and 2nd antiderivatives (0 at u = -1)
+        double mean[4], P[4][4];              // sine moments: E[Tk], E[Tk·Tj]
+    };
+
+    static double stage (double y, double lam)
+    {
+        const double ay = std::min (1.0, std::fabs (y));
+        return (1.0 - lam) * (2.0 * y * y - 1.0) + lam * (1.2732395447351628 * std::asin (ay) - 1.0);
     }
+    static double curve (int k, double u)
+    {
+        double y = u;
+        for (int s = 0; s < k; ++s) y = stage (y, kLam[s]);
+        return y;
+    }
+    static const Tables& tables()
+    {
+        // static storage (not built on the caller's stack: ~260 kB), filled
+        // exactly once (thread-safe magic static), on first VCM construction
+        static Tables x {};
+        static const bool built = []
+        {
+            constexpr double h = 2.0 / kN;
+            for (int k = 0; k < 4; ++k)
+            {
+                for (int i = 0; i <= kN; ++i) x.f[k][i] = curve (k, -1.0 + h * i);
+                x.F[k][0] = x.G[k][0] = 0.0;
+                for (int i = 0; i < kN; ++i)
+                {
+                    const double d = x.f[k][i + 1] - x.f[k][i];
+                    x.F[k][i + 1] = x.F[k][i] + 0.5 * h * (x.f[k][i] + x.f[k][i + 1]);
+                    x.G[k][i + 1] = x.G[k][i] + h * x.F[k][i] + h * h * (0.5 * x.f[k][i] + d * (1.0 / 6.0));
+                }
+            }
+            // sine moments on the same (interpolated) curves the audio sees
+            constexpr int M = 8192;
+            for (int k = 0; k < 4; ++k)
+            {
+                x.mean[k] = 0.0;
+                for (int j = 0; j < 4; ++j) x.P[k][j] = 0.0;
+            }
+            for (int m = 0; m < M; ++m)
+            {
+                const double u = std::sin (6.283185307179586 * (m + 0.5) / M);
+                double v[4];
+                for (int k = 0; k < 4; ++k) v[k] = lerpTab (x.f[k], u);
+                for (int k = 0; k < 4; ++k)
+                {
+                    x.mean[k] += v[k] / M;
+                    for (int j = 0; j < 4; ++j) x.P[k][j] += v[k] * v[j] / M;
+                }
+            }
+            return true;
+        }();
+        (void) built;
+        return x;
+    }
+
+    // current depth state
+    const Tables* tb = &tables();
+    int seg = 0;        // lower curve index (0..2)
+    double blend = 0.0; // blend toward curve seg + 1
+    double dc = 0.0;    // sine-referenced mean at this depth (subtracted)
+    double comp = 1.0;  // sine-referenced AC level compensation
+
+    void setDepth (double depth)
+    {
+        const double d3 = 3.0 * std::clamp (depth, 0.0, 1.0);
+        seg = std::min (2, (int) d3);
+        blend = d3 - seg;
+        const auto& t = *tb;
+        const int k = seg;
+        const double a = blend, b = 1.0 - a;
+        dc = b * t.mean[k] + a * t.mean[k + 1];
+        const double ms = b * b * t.P[k][k] + 2.0 * a * b * t.P[k][k + 1] + a * a * t.P[k + 1][k + 1];
+        comp = std::sqrt (0.5 / std::max (1.0e-6, ms - dc * dc)); // sine rms² = 1/2
+    }
+
     double f (double u) const
     {
-        double y = c[kDeg];
-        for (int i = kDeg - 1; i >= 0; --i) y = y * u + c[i];
-        return y;
+        const auto& t = *tb;
+        return (1.0 - blend) * lerpTab (t.f[seg], u) + blend * lerpTab (t.f[seg + 1], u) - dc;
     }
     double F1 (double u) const
     {
-        double y = C[kDeg + 1];
-        for (int i = kDeg; i >= 0; --i) y = y * u + C[i];
-        return y;
+        const auto& t = *tb;
+        return (1.0 - blend) * integTab (t.f[seg], t.F[seg], u) + blend * integTab (t.f[seg + 1], t.F[seg + 1], u) - dc * u;
+    }
+    double F2 (double u) const
+    {
+        const auto& t = *tb;
+        return (1.0 - blend) * integ2Tab (t.f[seg], t.F[seg], t.G[seg], u)
+             + blend * integ2Tab (t.f[seg + 1], t.F[seg + 1], t.G[seg + 1], u) - 0.5 * dc * u * u;
+    }
+
+private:
+    static double lerpTab (const double* f, double u)
+    {
+        const double x = (std::clamp (u, -1.0, 1.0) + 1.0) * (kN * 0.5);
+        const int i = std::min (kN - 1, (int) x);
+        const double t = x - i;
+        return f[i] + t * (f[i + 1] - f[i]);
+    }
+    // exact integral of the piecewise-linear f from -1 to u (constant outside)
+    static double integTab (const double* f, const double* F, double u)
+    {
+        constexpr double h = 2.0 / kN;
+        if (u <= -1.0) return f[0] * (u + 1.0);
+        if (u >= 1.0)  return F[kN] + f[kN] * (u - 1.0);
+        const double x = (u + 1.0) * (kN * 0.5);
+        const int i = std::min (kN - 1, (int) x);
+        const double t = x - i;
+        return F[i] + h * t * (f[i] + 0.5 * t * (f[i + 1] - f[i]));
+    }
+    // exact double integral of the piecewise-linear f (G' = F above)
+    static double integ2Tab (const double* f, const double* F, const double* G, double u)
+    {
+        constexpr double h = 2.0 / kN;
+        if (u <= -1.0) { const double s = u + 1.0; return 0.5 * f[0] * s * s; }
+        if (u >= 1.0)  { const double s = u - 1.0; return G[kN] + F[kN] * s + 0.5 * f[kN] * s * s; }
+        const double x = (u + 1.0) * (kN * 0.5);
+        const int i = std::min (kN - 1, (int) x);
+        const double s = (x - i) * h;
+        return G[i] + F[i] * s + s * s * (0.5 * f[i] + (f[i + 1] - f[i]) * s * (1.0 / (6.0 * h)));
     }
 };
 
@@ -205,19 +323,26 @@ inline float railLimit (float v)
     return v < 0.0f ? -y : y;
 }
 
-// One-pole knob smoother with a change-cached target.
+// Knob smoother with a change-cached target: two cascaded one-poles
+// (critically damped, C1 trajectory). A single one-pole starts with its
+// steepest slope, so a stepped knob put a slope corner into the gain/fold
+// trajectory and the transfer change splattered broadband ("click" streaks
+// at every FOLD step, sound round 3); the 2-pole start is smooth.
+constexpr float kKnobTau = 0.003f; // per pole (s); VCM + RING continuous ctls
+
 struct Smoothed
 {
-    float cache = -1.0f, target = 0.0f, v = 0.0f;
+    float cache = -1.0f, target = 0.0f, v1 = 0.0f, v = 0.0f;
     template <typename Map>
     float tick (float raw, float k, Map&& map)
     {
         if (differs (raw, cache)) { cache = raw; target = map (raw); }
-        v += k * (target - v);
+        v1 += k * (target - v1);
+        v  += k * (v1 - v);
         return v;
     }
     template <typename Map>
-    void snap (float raw, Map&& map) { cache = raw; target = map (raw); v = target; }
+    void snap (float raw, Map&& map) { cache = raw; target = map (raw); v1 = v = target; }
 };
 
 } // namespace shapers
@@ -264,7 +389,7 @@ public:
     void prepare (double sampleRate) override
     {
         Module::prepare (sampleRate);
-        smoothK = 1.0f - std::exp (-1.0f / (0.002f * sr)); // ~2 ms knob lag
+        smoothK = 1.0f - std::exp (-1.0f / (shapers::kKnobTau * sr)); // 2-pole knob smoother, 2 x 3 ms
         envHoldN = std::max (1, (int) std::lround (kEnvHold * 2.0f * sr)); // 2x rate
         envRelK  = 1.0f - std::exp (-1.0f / (kEnvRelTau * 2.0f * sr));
         dcK     = 1.0f - std::exp (-2.0f * 3.14159265f * kSqDcHz / (2.0f * sr));
@@ -355,16 +480,10 @@ public:
             if (differs (depth, lastDepth))
             {
                 lastDepth = depth;
-                const float d3 = 3.0f * depth;
-                const float a[3] = { std::clamp (d3,        0.0f, 1.0f),
-                                     std::clamp (d3 - 1.0f, 0.0f, 1.0f),
-                                     std::clamp (d3 - 2.0f, 0.0f, 1.0f) };
-                rectNL.kernel.build (a);
-                // power compensation of the one partially-faded stage: the dry
-                // and rectified parts are orthogonal octaves for a sine, so a
-                // linear crossfade would dip 3 dB mid-way
-                botComp = 1.0f;
-                for (float ak : a) botComp /= std::sqrt ((1.0f - ak) * (1.0f - ak) + ak * ak);
+                // depth -> blend of the tabulated stage curves; sine-referenced
+                // DC removal and AC level compensation (closed form per depth)
+                rectNL.kernel.setDepth (depth);
+                botComp = (float) rectNL.kernel.comp;
             }
             const float xb = (in (jBotIn1) + in (jBotIn2)) * (1.0f / kAudio);
             float x0, x1;
@@ -502,7 +621,7 @@ private:
 
     dsp::ADAA2<shapers::FoldKernel> foldNL;
     dsp::ADAA1<dsp::TanhKernel> topNL, sqNL;
-    dsp::ADAA1<shapers::RectCascadeKernel> rectNL;
+    dsp::ADAA2<shapers::RectCascadeKernel> rectNL;
     float makeup = 1.0f;
     float mkTab[kMkN] {};
 
@@ -546,7 +665,7 @@ public:
     void prepare (double sampleRate) override
     {
         Module::prepare (sampleRate);
-        smoothK = 1.0f - std::exp (-1.0f / (0.002f * sr));
+        smoothK = 1.0f - std::exp (-1.0f / (shapers::kKnobTau * sr)); // 2-pole knob smoother, 2 x 3 ms
         gainS.snap  (ctls[cGain].v,  mapGain);
         morphS.snap (ctls[cMorph].v, mapUnit);
         trimXCache = trimYCache = -1.0f;

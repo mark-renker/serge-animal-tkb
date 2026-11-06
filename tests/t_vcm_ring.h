@@ -420,6 +420,78 @@ inline void testMidAlias()
     std::printf ("  (info) MID alias @ 16x cap: %.1f dB re H1, %.1f dB re strongest\n", reFund16, reMax16);
 }
 
+// round 3 (2026-11-06): stepped ctls must not click. A 2.0 V 220 Hz sine
+// through MID (or RING X, Y = 2.5 V DC), the ctl stepped at t = 0.5 s; HF
+// energy (4-12 kHz) in 512-sample Hann windows around the step vs the
+// steady state before/after: excess <= +6 dB. (The 1-pole 2 ms smoother's
+// slope corner splattered +31 dB at FOLD step 1 -> 2 of the sound-bar sweep.)
+inline double hfBand (const std::vector<float>& x, size_t a, double lo, double hi)
+{
+    constexpr size_t n = 512;
+    std::vector<std::complex<double>> c (n);
+    for (size_t i = 0; i < n; ++i)
+        c[i] = (double) x[a + i] * (0.5 - 0.5 * std::cos (2.0 * kPi * (double) i / (double) n));
+    fft (c);
+    double e = 0.0;
+    for (size_t k = 1; k < n / 2; ++k)
+    {
+        const double f = (double) k * SR / (double) n;
+        if (f >= lo && f < hi) e += std::norm (c[k]);
+    }
+    return e;
+}
+inline double stepExcessDb (const std::vector<float>& y, size_t t)
+{
+    const double before = hfBand (y, t - 14400, 4000.0, 12000.0);
+    const double after  = hfBand (y, t + 14400, 4000.0, 12000.0);
+    double tr = 0.0;
+    for (int o = -256; o <= 256; o += 32) tr = std::max (tr, hfBand (y, (size_t) ((long) t + o - 256), 4000.0, 12000.0));
+    return 10.0 * std::log10 ((tr + 1e-30) / (std::max (before, after) + 1e-30));
+}
+inline void testCtlSteps()
+{
+    // MID: FOLD 0 -> 1/7 and 1/7 -> 2/7 (the cleanest, most exposed steps)
+    double worst = -1e9;
+    for (int k = 0; k < 2; ++k)
+    {
+        Rig r; auto* v = r.sys.vcm;
+        v->ctls[VCM::cFold].v = (float) k / 7.0f; v->ctls[VCM::cBias].v = 0.5f;
+        r.sys.prepare (SR);
+        float src = 0.0f; injectSrc (v, VCM::jMidIn1, &src);
+        std::vector<float> y (48000);
+        for (int i = 0; i < 48000; ++i)
+        {
+            if (i == 24000) v->ctls[VCM::cFold].v = (float) (k + 1) / 7.0f;
+            src = (float) (2.0 * std::sin (2.0 * kPi * 220.0 * i / SR));
+            r.sys.engine.tick();
+            y[(size_t) i] = v->jacks[VCM::jMidOut].value;
+        }
+        worst = std::max (worst, stepExcessDb (y, 24000));
+    }
+    std::printf ("  MID FOLD step 0 -> 1/7 -> 2/7: worst 4-12 kHz excess at the step %+.1f dB\n", worst);
+    CHECK (worst <= 6.0, "VCM MID: stepped FOLD does not click (4-12 kHz excess <= +6 dB)", worst, 6.0);
+    // RING: MORPH 0.5 -> 0.75 with Y at 0 V (output = X·(1 - m): a pure
+    // -6 dB gain step on X)
+    {
+        Rig r; auto* g = r.sys.ring;
+        g->ctls[RING::cMorph].v = 0.5f;
+        r.sys.prepare (SR);
+        float x = 0.0f, yc = 0.0f;
+        injectSrc (g, RING::jX, &x); injectSrc (g, RING::jY, &yc);
+        std::vector<float> y (48000);
+        for (int i = 0; i < 48000; ++i)
+        {
+            if (i == 24000) g->ctls[RING::cMorph].v = 0.75f;
+            x = (float) (2.0 * std::sin (2.0 * kPi * 220.0 * i / SR));
+            r.sys.engine.tick();
+            y[(size_t) i] = g->jacks[RING::jOut].value;
+        }
+        const double ex = stepExcessDb (y, 24000);
+        std::printf ("  RING MORPH step 0.5 -> 0.75 (Y = 0 V): 4-12 kHz excess %+.1f dB\n", ex);
+        CHECK (ex <= 6.0, "RING: stepped MORPH does not click (4-12 kHz excess <= +6 dB)", ex, 6.0);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // T08 BOT
 // ---------------------------------------------------------------------------
@@ -484,6 +556,30 @@ inline void testBot()
         for (size_t i = 0; i < 480; ++i) pk0 = std::max (pk0, (double) std::fabs (on[i]));
         for (size_t i = 2400; i < 4800; ++i) pk1 = std::max (pk1, (double) std::fabs (on[i]));
         CHECK (pk0 >= 0.9 * pk1, "T08 BOT no fade-in: first 10 ms peak >= 90% of steady", pk0, pk1);
+    }
+
+    // round 3 (2026-11-06): RECTIFIER character, not a smooth polynomial.
+    // Full-wave rectifiers make cusps -> a dense even series falling slowly:
+    // at full depth H16, H24, H32 and H48 each >= -45 dB re the dominant H8
+    // (the round-2 square-law cascade: H16 -112 dB, nothing above ~6 kHz),
+    // with an alias floor <= -90 dB re strongest over 0-20 kHz (220 Hz).
+    {
+        const auto h = harmonics (bot, f0, 100);
+        double strongest = 0.0;
+        for (size_t k = 1; k < h.size(); ++k) strongest = std::max (strongest, h[k]);
+        const double s16 = db (h[16], strongest), s24 = db (h[24], strongest),
+                     s32 = db (h[32], strongest), s48 = db (h[48], strongest);
+        std::printf ("  BOT full depth cusp series (dB re strongest): H16 %.1f H24 %.1f H32 %.1f H48 %.1f H64 %.1f H96 %.1f\n",
+                     s16, s24, s32, s48, db (h[64], strongest), db (h[96], strongest));
+        CHECK (std::min ({ s16, s24, s32, s48 }) >= -45.0,
+               "T08 BOT rectifier cusps: dense even series (H16/H24/H32/H48 >= -45 dB re max)",
+               std::min ({ s16, s24, s32, s48 }), -45.0);
+        std::vector<float> w (bot.begin(), bot.begin() + 32768);
+        const auto m = t_nto::spectrum (w);
+        const double reH1 = t_nto::worstNonHarmonic (m, w.size(), f0, 20000.0, 20.0);
+        const double reMax = reH1 + db (t_nto::peakNear (m, w.size(), f0, 3.0), t_nto::peakNear (m, w.size(), 8.0 * f0, 3.0));
+        std::printf ("  BOT full depth alias floor 0-20 kHz: %.1f dB re strongest\n", reMax);
+        CHECK (reMax <= -90.0, "T08 BOT anti-aliasing: non-harmonic 0-20 kHz <= -90 dB re max", reMax, -90.0);
     }
 
     // level compensation: rectification must not shrink the output
@@ -946,6 +1042,7 @@ inline void run()
     testMidRealSine();
     testMidAlias();
     testBot();
+    testCtlSteps();
     testTop();
     GROUP ("T09 RING (suppression, trims, morph, DC carrier)");
     testRing();

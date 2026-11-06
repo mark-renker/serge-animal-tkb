@@ -18,6 +18,17 @@ counterparts in `../v1/supplementary/` (pairs; T09 band amended to the
 bipolar render with Mark's approval). New negative control
 `../control/ring_bipolar_leaky.wav`.
 
+**Round 3 (2026-11-06, branch `sound-r3`).** Re-rendered after the round-3
+DSP fixes (LOG.md "Sound bar round 3": VCM BOT rectifier cusps, VCM/RING
+2-pole knob smoothing, NTO VAR exact-sine start, VCFQ integrators linear
+below 5 V, VCA output stage linear below 5 V). Changed files:
+`nto_shape_sweep`, `vcm_mid_foldsweep`, `vcm_bot_full`, `vcfq_ping`,
+`dusg_env_shape` (the VCA), `default_note60`, `supplementary/ring_bipolar` +
+`ring_morph_sweep` (the VCFQ coupler) and `../control/ring_bipolar_leaky`
+(same coupler); every other file is byte-identical. No patch or monitor
+level changed — every pair stays within ±1 dB RMS. New negative control
+`../control/dusg_env_rc.wav` (below).
+
 ## How these were made
 
 - Driver: `tools/RenderGauntlet.cpp` → CMake target **`satk_render`** (pure
@@ -72,6 +83,10 @@ t = 0..7 s to k/7. Monitor level **0.375** (trimmed: convention 0.5 gave
 +2.5 dB over v1 — VAR is hotter than v1's var out). Achieved f0 220.001 Hz.
 Harmonic centroid per step: 270, 295, 386, 429, 505, 661, 963, 1794 Hz —
 strictly rising sine → 'M' (v1 rises then falls).
+**Round 3:** the minimum shape is the exact sine (VAR drive starts at 1.0,
+not an under-driven 0.94): step 1 THD 0.23 % in the file (the bus limiter's
+H3; 0.000 % at the jack; r2 1.55 %); centroid 236, 331, 413, 450, 523, 680,
+986, 1794 Hz.
 
 ## 3. `vcm_mid_foldsweep.wav` — VCM MID fold sweep (T08)
 
@@ -89,6 +104,11 @@ max), odd:even 73.0 dB, ≈ 6 transfer reversals; THD at minimum fold 1.28 %
 (r1 2.77 %); per-step RMS −18.5, −18.3, −17.6, −16.0, −14.9, −16.3, −15.8,
 −17.6 dBFS (span 3.6 dB; r1 6.6 dB). Round 1 (vcm-sweep-fix): 267, 276, 297,
 345, 462, 801, 1215, 1882 Hz; 26/11 odd harmonics; odd:even 73.7 dB.
+**Round 3:** the VCA in the feed is now linear at this level (its old
+`kSatV` soft-sat H3 is gone) and the FOLD knob is 2-pole smoothed (no click
+at the steps: worst 4–12 kHz excess +21.8 → −0.0 dB). Centroid 240, 247, 265,
+314, 465, 888, 1289, 1993 Hz; THD at minimum fold 0.81 %; per-step RMS span
+3.4 dB; 36 odd harmonics ≥ −40 dBc re H1 (11 re max); odd:even 73.2 dB.
 *Re-rendered on branch `vcm-sweep-fix`* after the VCM-mid knee fix (LOG.md):
 the first render went 265, **256**, 275, 322, 451, 825, 1217, 1899 Hz (OUT).
 The patch is unchanged.
@@ -102,6 +122,10 @@ strongest **H8**; H1..H16 re strongest −116, −72, −121, −58, −115, −
 **0**, −100, −24, −113, −53, −124, −85, −116, −112 dB → even:odd **+95.0 dB**
 (T08 ≥ +12; v1 −85.3 dB, purely odd). r1's file re-measured with the fixed
 f0: strongest H10, H8 −42 dB (its table row "H1 −38.4" was the f0 bug).
+**Round 3** (rectifier cusps): strongest H8; H1..H16 re strongest −123, −67,
+−123, −25, −119, −33, −99, **0**, −99, −35, −115, −32, −130, −51, −117, −27 dB
+and a dense even series to the top of the band; even:odd +95.6 dB; worst
+non-harmonic −102 dB re strongest over 0–20 kHz (−82 dB at 23.8 kHz).
 
 ## 5. `vcfq_ping.wav` — VCFQ ping, Q ×4 (T07)
 
@@ -113,6 +137,9 @@ v1's one-sample impulse at the same tap). First ping at t ≈ 0.5 s (TKB clock
 phase starts at 0), then every 0.5 s.
 Decay peak→−40 dB (median per step): **4.0, 10.8, 27.1, 64.1 ms** — monotonic
 (v1: 3.8, 10.7, 27.5, 64.4 ms). Rings at ≈ 800 Hz.
+**Round 3:** the integrators are exactly linear below 5 V, so the ring pitch
+no longer sags with ping level: Q 35 rings at **799.9 Hz** (5–45 ms after the
+onset; r2 797.3 Hz in the same window). Decays 4.0, 10.8, 27.5, 64.4 ms.
 
 ## 6. `dusg_cycle.wav` — DUSG1 cycling @ ~200 Hz (T05c)
 
@@ -131,6 +158,15 @@ amplitude envelope of the 1 kHz carrier is the DUSG shape, exactly v1's
 audition patch. Achieved carrier 1000.001 Hz.
 Mid-80 % rise deviation from a line **0.85 % FS** (worst of 3; T05d ≤ 3 %),
 fall 0.86 %; rise/fall ≈ 0.492 / 0.985 s.
+**Round 3:** the DUSG OUT itself was always linear (jack-level probe: 0.000 %
+FS); the bend was VCA2's output soft-sat (8·tanh(y/8): ~9 % less slope at
+the 2.5 V top of the swing, and H3 −40 dBc on the carrier). With the VCA
+linear below 5 V: rise **0.31 %** / fall 0.30 % FS (v1 0.28 / 0.26 %),
+rise/fall 0.494 / 0.989 s; carrier H3 at the top of the rise −43.8 dBc in the
+file (VCA jack −51.6 dBc = the NTO SINE's own residual; the rest is the OUT
+bus limiter at 0.22 FS). The patch is unchanged: it already maps v1's
+semantics (v1 MANIFEST file 7: VCA2 linear, level 0, carrier amt 0.5 →
+v2 MASTER 0.4, same output level).
 
 ### 7b. `dusg_env_shape_monitor_direct.wav` — same transients, DSG1 OUT → monitor
 
@@ -164,6 +200,9 @@ bipolar pair (`supplementary/ring_bipolar.wav`, both versions).
 (`velV = 100/127 × 5 V`), pitch 0 V, gate high 0.25 → 2.25 s, then 2.25 s
 tail. NTO free-runs at the default 261.63 Hz knob (achieved 261.609 Hz with
 drift 0.2; no KV cable in the default set, as in v1). Stereo.
+**Round 3:** peak 0.6552, RMS L 0.03425 / R 0.02588; sounding-span RMS
+0.1726 over 0.177 s (VAR at the default shape 0.15 is now drive 1.15, and
+VCA1 no longer soft-compresses the pluck's ~5.6 V peaks).
 **Round 2:** peak 0.5823, RMS L 0.03241 / R 0.02436; sounding-span RMS
 0.1616 over 0.181 s (v1 0.1548 over 0.247 s); tail after 3.0 s exactly 0.
 Round 1: peak 0.591, RMS L 0.0328 / R 0.0247; note-window (0.25–1.25 s) RMS
@@ -187,6 +226,16 @@ A/B pairs; `ring_morph_sweep` stays v2-only. Measured in MEASUREMENTS.md.
 
 ## Negative controls (`../control/`)
 
+**Round 3 — `dusg_env_rc.wav`** (sound-r3 packet, dusg_env piece C): file
+7's patch and level path (NTO SINE 1 kHz → VCA2 LIN, LEVEL 0 → OUT IN 2,
+PAN 0.5, MASTER 0.4, same three transients), but VCA2's VC is fed by a
+degraded "slope generator": an **RC capacitor-charge envelope** —
+exponential approach toward 5 V over the 0.5 s rise (τ = 0.5 s / ln 100) and
+exponential discharge over the 1.0 s fall (τ = 1.0 s / ln 100), the ADSR-style
+curve the Serge's linear-by-design slopes are not. T05d rise deviation
+15.7 % FS (OUT), 10–90 % times 0.28 / 0.60 s. RMS 0.0721 (pair 0.0765 /
+0.0763, −0.5 dB).
+
 **Round 2 — `ring_bipolar_leaky.wav`** (sound-r2 packet, ring piece C): the
 `ring_bipolar` patch and level path (RING monitor tap, MASTER 0.8, through the
 v2 OUT bus, monitor level 0.8 for ±0.5 dB RMS vs the pair), but the RING
@@ -209,17 +258,20 @@ to be unambiguously worst: −12.7 dBc in-band, −12.4 dBc full-band.
 | file | len (s) | peak | RMS(L) | v1 RMS(L) | Δ RMS | monitor lvl / master | drift |
 |---|---|---|---|---|---|---|---|
 | nto_saw_1975.wav | 5.00 | 0.2725 | 0.12361 | 0.12776 | −0.29 dB | 0.5 / 0.8 | 0 |
-| nto_shape_sweep.wav | 8.00 | 0.1889 | 0.14101 | 0.14072 | +0.02 dB | 0.375 / 0.8 | 0 |
-| vcm_mid_foldsweep.wav | 8.00 | 0.3542 | 0.14609 | 0.14718 | −0.06 dB | 0.41 / 0.8 | 0 |
-| vcm_bot_full.wav | 5.00 | 0.1884 | 0.12801 | 0.12746 | +0.04 dB | 0.52 / 0.8 | 0 |
-| vcfq_ping.wav | 8.00 | 0.1145 | 0.00624 | 0.00568 | +0.82 dB | 0.15 / 0.8 | 0 |
+| nto_shape_sweep.wav | 8.00 | 0.1871 | 0.14169 | 0.14072 | +0.06 dB | 0.375 / 0.8 | 0 |
+| vcm_mid_foldsweep.wav | 8.00 | 0.3535 | 0.14601 | 0.14718 | −0.07 dB | 0.41 / 0.8 | 0 |
+| vcm_bot_full.wav | 5.00 | 0.2203 | 0.13028 | 0.12746 | +0.19 dB | 0.52 / 0.8 | 0 |
+| vcfq_ping.wav | 8.00 | 0.1148 | 0.00621 | 0.00568 | +0.77 dB | 0.15 / 0.8 | 0 |
 | dusg_cycle.wav | 5.00 | 0.2043 | 0.06509 | 0.06320 | +0.26 dB | 0.25 / 0.8 | 0 |
-| dusg_env_shape.wav | 6.50 | 0.2155 | 0.07542 | 0.07633 | −0.10 dB | (IN 2 path) / 0.4 | 0 |
+| dusg_env_shape.wav | 6.50 | 0.2222 | 0.07649 | 0.07633 | +0.02 dB | (IN 2 path) / 0.4 | 0 |
 | dusg_env_shape_monitor_direct.wav | 6.50 | 0.0072 | 0.00413 | 0.00110 | +11.5 dB (both near-silent) | 0.25 / 0.8 | 0 |
 | ring_sines.wav | 5.00 | 0.2881 | 0.12671 | 0.12613 | +0.04 dB | 0.35 / 0.8 | 0 |
-| default_note60.wav | 4.50 | 0.5823 | 0.03241 | 0.03631 | −0.99 dB | defaults (0.53) | 0.2 |
-| supplementary/ring_bipolar.wav | 5.00 | 0.1271 | 0.05171 | 0.04913 | +0.44 dB | 1.0 / 0.8 | 0 |
+| default_note60.wav | 4.50 | 0.6552 | 0.03425 | 0.03631 | −0.51 dB | defaults (0.53) | 0.2 |
+| supplementary/ring_bipolar.wav | 5.00 | 0.1271 | 0.05170 | 0.04913 | +0.44 dB | 1.0 / 0.8 | 0 |
 | supplementary/dusg_end_duty.wav | 7.50 | 0.2203 | 0.08359 | 0.07908 | +0.48 dB | 0.25 / 0.8 | 0 |
-| control/ring_bipolar_leaky.wav | 5.00 | 0.1336 | 0.04885 | 0.04913 | −0.05 dB | 0.8 / 0.8 | 0 |
+| control/ring_bipolar_leaky.wav | 5.00 | 0.1335 | 0.04884 | 0.04913 | −0.05 dB | 0.8 / 0.8 | 0 |
+| control/dusg_env_rc.wav | 6.50 | 0.2203 | 0.07212 | 0.07633 | −0.49 dB | (IN 2 path) / 0.4 | 0 |
+
+(Round 3 values. Rows unchanged since round 2 are byte-identical files.)
 
 No NaN/Inf in any render (checked at write time).
