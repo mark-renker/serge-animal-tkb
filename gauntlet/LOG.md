@@ -991,3 +991,18 @@ negative control each round). v2 verdicts vs v1 on scored pieces:
   (Num programs 7).
 - Both soft bars closed (UI by Mark's approval at the cap; sound after r4). v2.0.0
   release candidate.
+
+## 2026-11-08 — v2.0.0 released (public)
+
+- Repo made public (AGPLv3, LICENSE + NOTICE) after a history rewrite that
+  removed gauntlet/research/ and gauntlet/judge/*/PACKET.md (vendor-quote
+  material) from every commit (Mark's decision; pre-rewrite mirror backup kept
+  locally). Rewritten main verified file-identical to the validated d83be01
+  apart from those 8 files.
+- Tag v2.0.0 -> ca1f49a. Release workflow (macOS universal .pkg + Windows x64
+  VST3/standalone zip, DSP suite gate) published
+  https://github.com/mark-renker/serge-animal-tkb/releases/tag/v2.0.0 ;
+  v1 installer (universal, built from the installed v1 bundles) attached by hand.
+- Installers are unsigned (no Developer ID): packaging/INSTALL.md documents the
+  one-time Gatekeeper "Open Anyway" / SmartScreen steps. Windows build compiles
+  and passes the DSP suite in CI but has not yet been tried in a Windows DAW.
