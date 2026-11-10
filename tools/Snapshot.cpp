@@ -1,7 +1,7 @@
 // Serge Animal TKB v2 — headless editor -> PNG (satk_snapshot), for the blind
 // UI critics (G2u/U04). Ported from PF50 tools/Snapshot.cpp. At foundation the
 // editor is the generic placeholder; the stage-3 UI replaces it in place.
-// Usage: satk_snapshot <out.png>
+// Usage: satk_snapshot <out.png> [scale] [program]
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "../src/plugin/PluginProcessor.h"
 #include "../src/ui/MainView.h"
@@ -14,6 +14,7 @@ int main (int argc, char** argv)
 
     SatkProcessor proc;
     proc.prepareToPlay (48000.0, 512);
+    if (argc > 3) proc.setCurrentProgram (std::atoi (argv[3])); // optional factory program
 
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     if (ed == nullptr) { std::printf ("no editor\n"); return 1; }

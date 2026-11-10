@@ -5,6 +5,8 @@ Windows (VST3, standalone). It models the modules of a Random\*Source Serge **"A
 system plus the **TKB** touch-activated keyboard sequencer, with real banana-cable patching
 on a cream Serge-style panel.
 
+![The full Serge Animal TKB v2 panel with the "Wild Animal" preset patched: the Animal voice row, the control and output row, the TKB sequencer with its 4×16 knob field and gold touch pads, and the MIDI / sequencer strip](docs/ui_preview.png)
+
 v2 is a ground-up C++17 / JUCE 8 rewrite of the original Faust plugin (v1, kept in
 [`legacy/`](legacy/)). Every module was rebuilt from a naive behavioural model into a
 circuit-informed one, and verified against measured targets (see
@@ -65,6 +67,8 @@ opening v1:
 - Hover over any control or jack for a tooltip.
 
 ## Modules
+
+![Close-up of the voice row: New Timbral Oscillator, Wave Multipliers, Ring Modulator, Variable Q VCF and Noise & Random, with patch cables in place](docs/ui_detail_voice.png)
 
 | Module | Serge original | What it does in v2 |
 |---|---|---|
