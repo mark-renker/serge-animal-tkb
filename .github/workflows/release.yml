@@ -60,6 +60,7 @@ jobs:
           cp -R "$ART/VST3/Serge Animal TKB v2.vst3" "$OUT/"
           cp "$ART/Standalone/Serge Animal TKB v2.exe" "$OUT/"
           cp packaging/INSTALL-Windows.txt "$OUT/INSTALL.txt"
+          cp LICENSE NOTICE "$OUT/"
           7z a "dist/SergeAnimalTKB-v2-$VERSION-Windows-x64.zip" "$OUT"
       - uses: actions/upload-artifact@v4
         with:

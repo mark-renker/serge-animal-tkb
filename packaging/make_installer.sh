@@ -62,7 +62,8 @@ mkdir -p "$WORK/pkgs" "$WORK/res" "$DIST"
 component () { # <bundle> <install-location> <pkg-id>
   local bundle="$1" loc="$2" pid="$3" stage="$WORK/stage-$3"
   mkdir -p "$stage"
-  ditto "$bundle" "$stage/$(basename "$bundle")"
+  ditto --norsrc --noextattr "$bundle" "$stage/$(basename "$bundle")"
+  xattr -cr "$stage/$(basename "$bundle")"   # no AppleDouble/._ files can leak into zips
   if [[ "$SIGN_APP" == "-" ]]; then   # ad-hoc: no hardened runtime (hosts must be able to load it)
     codesign --force --deep -s - "$stage/$(basename "$bundle")"
   else                                # Developer ID: hardened runtime + timestamp, required for notarization
@@ -81,6 +82,7 @@ component "$VST3" "/Library/Audio/Plug-Ins/VST3"       "$ID.vst3"
 # installer UI text + distribution (choices for each component)
 sed -e "s/@NAME@/$NAME/g" -e "s/@VERSION@/$VERSION/g" "$HERE/resources/welcome.html" > "$WORK/res/welcome.html"
 cp "$HERE/resources/conclusion.html" "$WORK/res/conclusion.html"
+{ cat "$ROOT/NOTICE"; printf '\n\n'; cat "$ROOT/LICENSE"; } > "$WORK/res/license.txt"
 {
   cat <<EOF
 <?xml version="1.0" encoding="utf-8"?>
@@ -88,6 +90,7 @@ cp "$HERE/resources/conclusion.html" "$WORK/res/conclusion.html"
   <title>$NAME $VERSION</title>
   <organization>com.renkydenk</organization>
   <welcome file="welcome.html" mime-type="text/html"/>
+  <license file="license.txt" mime-type="text/plain"/>
   <conclusion file="conclusion.html" mime-type="text/html"/>
   <options customize="always" require-scripts="false" hostArchitectures="arm64,x86_64"/>
   <domains enable_localSystem="true"/>
@@ -134,7 +137,9 @@ rm -f "$ZIP"
 BUNDLES="$WORK/$NAME $VERSION"
 mkdir -p "$BUNDLES"
 for d in "$WORK"/stage-*; do cp -R "$d"/* "$BUNDLES"/; done
-ditto -c -k --keepParent "$BUNDLES" "$ZIP"
+cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$BUNDLES"/
+xattr -cr "$BUNDLES"
+ditto -c -k --norsrc --noextattr --keepParent "$BUNDLES" "$ZIP"
 
 echo "wrote $OUT"
 echo "wrote $ZIP"
