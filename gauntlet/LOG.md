@@ -1006,3 +1006,14 @@ negative control each round). v2 verdicts vs v1 on scored pieces:
 - Installers are unsigned (no Developer ID): packaging/INSTALL.md documents the
   one-time Gatekeeper "Open Anyway" / SmartScreen steps. Windows build compiles
   and passes the DSP suite in CI but has not yet been tried in a Windows DAW.
+
+## 2026-11-09 — v2.0.1 (packaging fix)
+
+- v2.0.0 asset verification (sound session) found: the v1 bundles zip carried
+  AppleDouble `._*` entries (break codesign when extracted with Info-ZIP
+  unzip), and no artifact shipped LICENSE/NOTICE (AGPLv3 §4/§6; JUCE/VST
+  attributions). make_installer.sh now strips xattrs and zips with
+  --norsrc/--noextattr, adds an installer <license> page (NOTICE + AGPLv3) and
+  LICENSE + NOTICE in every zip; the Windows zip gets them in the workflow.
+- Plugin code unchanged; version 2.0.0 -> 2.0.1 so every published file is
+  reproducible from its tag (Mark's choice over replacing v2.0.0's files).

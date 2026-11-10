@@ -393,7 +393,7 @@ removing cable 1 ⇒ exact 0.0; velocity scales the final mix; monitor auditions
 
 - **Identity** (amended 2026-11-03): AU `aumu` / subtype `Sat2` / manufacturer `Rnky`;
   name "Serge Animal TKB v2"; company "Renky Denk"; bundle `com.renkydenk.SergeAnimalTKB2`;
-  version 2.0.0; AU + VST3 + Standalone; arm64; `IS_SYNTH`, MIDI in. v1 keeps
+  version 2.0.x; AU + VST3 + Standalone; universal (arm64 + x86_64) on macOS, x64 VST3 on Windows; `IS_SYNTH`, MIDI in. v1 keeps
   `aumu Satk Rnky` and stays installed alongside; v1 sessions keep opening v1.
 - **Parameters**: one APVTS param per ctl, in module/ctl declaration order.
   ID = `{moduleId}_{ctlIndex}` (append-only). Name = human `{MODULEID} {CTL NAME}` (e.g.

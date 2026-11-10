@@ -2,7 +2,7 @@
 # framework. Gauntlet gate G1: this file must build AU + VST3 + Standalone +
 # satk_gauntlet + satk_uxtests + satk_snapshot with zero warnings in our sources.
 cmake_minimum_required(VERSION 3.22)
-project(SergeAnimalTKB VERSION 2.0.0)
+project(SergeAnimalTKB VERSION 2.0.1)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

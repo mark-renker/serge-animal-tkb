@@ -1,3 +1,8 @@
+**v2.0.1** is a packaging fix: every download now includes the AGPLv3 `LICENSE` and the `NOTICE`
+(the installers also show a license page), and the v1 bundles zip no longer contains macOS `._` metadata
+files that could break the plug-in's signature when extracted with non-Apple unzip tools.
+The plug-in code is identical to v2.0.0.
+
 **Downloads: no compiling needed.** See the full guide in
 [packaging/INSTALL.md](https://github.com/mark-renker/serge-animal-tkb/blob/main/packaging/INSTALL.md).
 
